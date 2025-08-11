@@ -320,6 +320,8 @@ export function Canvas({ eventId }: CanvasProps) {
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const [isPanning, setIsPanning] = useState(false);
   const [lastPanPoint, setLastPanPoint] = useState({ x: 0, y: 0 });
+  const [mouseDownPoint, setMouseDownPoint] = useState({ x: 0, y: 0 });
+  const [hasMoved, setHasMoved] = useState(false);
 
   // Initialize canvas with 40x40 pixels for better performance
   useEffect(() => {
@@ -341,7 +343,7 @@ export function Canvas({ eventId }: CanvasProps) {
     }
   }, [pixels, eventId]);
 
-  // Draw canvas whenever pixels, zoom, or pan changes
+  // Draw canvas whenever pixels, zoom, pan, or selectedPixel changes
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas || pixels.length === 0) return;
@@ -367,7 +369,28 @@ export function Canvas({ eventId }: CanvasProps) {
     // Draw pixels
     pixels.forEach((row, rowIndex) => {
       row.forEach((color, colIndex) => {
-        ctx.fillStyle = color;
+        // Check if this pixel is in the selected row or column
+        const isInSelectedRow = selectedPixel && rowIndex === selectedPixel.row;
+        const isInSelectedColumn = selectedPixel && colIndex === selectedPixel.col;
+        
+        // Make selected row and column slightly grayer
+        let finalColor = color;
+        if (isInSelectedRow || isInSelectedColumn) {
+          // Convert hex to RGB, make it grayer, then back to hex
+          const hex = color.replace('#', '');
+          const r = parseInt(hex.substr(0, 2), 16);
+          const g = parseInt(hex.substr(2, 2), 16);
+          const b = parseInt(hex.substr(4, 2), 16);
+          
+          // Blend with gray (50% opacity)
+          const grayR = Math.round(r * 0.5 + 128 * 0.5);
+          const grayG = Math.round(g * 0.5 + 128 * 0.5);
+          const grayB = Math.round(b * 0.5 + 128 * 0.5);
+          
+          finalColor = `#${grayR.toString(16).padStart(2, '0')}${grayG.toString(16).padStart(2, '0')}${grayB.toString(16).padStart(2, '0')}`;
+        }
+        
+        ctx.fillStyle = finalColor;
         ctx.fillRect(
           colIndex * pixelSize,
           rowIndex * pixelSize,
@@ -390,7 +413,7 @@ export function Canvas({ eventId }: CanvasProps) {
     });
 
     ctx.restore();
-  }, [pixels, zoom, pan]);
+  }, [pixels, zoom, pan, selectedPixel]);
 
   // Adjust pan when zoom changes to keep canvas within bounds
   useEffect(() => {
@@ -427,6 +450,12 @@ export function Canvas({ eventId }: CanvasProps) {
 
   // Handle canvas click
   const handleCanvasClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    // Only handle click if mouse hasn't moved (it's a click, not a drag)
+    if (hasMoved) {
+      setHasMoved(false); // Reset for next interaction
+      return;
+    }
+    
     const canvas = canvasRef.current;
     if (!canvas) return;
 
@@ -455,21 +484,37 @@ export function Canvas({ eventId }: CanvasProps) {
         setPixels(newPixels);
       }
     }
+    
+    // Reset hasMoved for next interaction
+    setHasMoved(false);
   };
 
   // Handle mouse down for panning
   const handleMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
     if (e.button === 0) { // Left mouse button
       setIsPanning(true);
+      setHasMoved(false);
+      setMouseDownPoint({ x: e.clientX, y: e.clientY });
       setLastPanPoint({ x: e.clientX, y: e.clientY });
     }
   };
+
+
 
   // Handle mouse move for panning
   const handleMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
     if (isPanning) {
       const deltaX = e.clientX - lastPanPoint.x;
       const deltaY = e.clientY - lastPanPoint.y;
+      
+      // Check if mouse has moved enough to consider it a drag
+      const totalDeltaX = e.clientX - mouseDownPoint.x;
+      const totalDeltaY = e.clientY - mouseDownPoint.y;
+      const moveThreshold = 5; // pixels
+      
+      if (Math.abs(totalDeltaX) > moveThreshold || Math.abs(totalDeltaY) > moveThreshold) {
+        setHasMoved(true);
+      }
       
       setPan(prevPan => {
         const newX = prevPan.x + deltaX;
@@ -501,6 +546,7 @@ export function Canvas({ eventId }: CanvasProps) {
   // Handle mouse up to stop panning
   const handleMouseUp = () => {
     setIsPanning(false);
+    // Don't reset hasMoved here - let the click handler decide
   };
 
   const handlePlacePixel = () => {
@@ -582,12 +628,21 @@ export function Canvas({ eventId }: CanvasProps) {
 
           {/* Selected Pixel Info */}
           {selectedPixel && (
-            <div className="text-center p-2 bg-card-bg rounded-lg border border-card-border">
+            <div 
+              className="text-center p-2 bg-card-bg rounded-lg border border-card-border cursor-pointer hover:bg-card-border transition-colors"
+              onClick={() => {
+                setSelectedPixel({ row: selectedPixel.row, col: selectedPixel.col });
+                setShowPixelSelector(true);
+              }}
+            >
               <div className="text-sm text-foreground-muted">
                 Selected Pixel: ({selectedPixel.row + 1}, {selectedPixel.col + 1})
               </div>
               <div className="text-xs text-foreground-muted">
                 Current Color: {pixels[selectedPixel.row][selectedPixel.col]}
+              </div>
+              <div className="text-xs text-accent mt-1">
+                Click to reselect this pixel
               </div>
             </div>
           )}
