@@ -19,11 +19,11 @@ import {
   WalletDropdownDisconnect,
 } from "@coinbase/onchainkit/wallet";
 import { useEffect, useMemo, useState, useCallback } from "react";
-import { Button } from "./components/DemoComponents";
-import { Icon } from "./components/DemoComponents";
-import { BlacesHome } from "./components/BlacesComponents";
+import { Button } from "../components/DemoComponents";
+import { Icon } from "../components/DemoComponents";
+import { CreateEvent } from "../components/BlacesComponents";
 
-export default function App() {
+export default function CreateEventPage() {
   const { setFrameReady, isFrameReady, context } = useMiniKit();
   const [frameAdded, setFrameAdded] = useState(false);
 
@@ -94,7 +94,7 @@ export default function App() {
         </header>
 
         <main className="flex-1">
-          <BlacesHome setActiveTab={() => {}} />
+          <CreateEvent setActiveTab={() => window.location.href = '/'} />
         </main>
 
         <footer className="mt-2 pt-4 flex justify-center">

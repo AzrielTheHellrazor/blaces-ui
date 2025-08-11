@@ -19,13 +19,20 @@ import {
   WalletDropdownDisconnect,
 } from "@coinbase/onchainkit/wallet";
 import { useEffect, useMemo, useState, useCallback } from "react";
-import { Button } from "./components/DemoComponents";
-import { Icon } from "./components/DemoComponents";
-import { BlacesHome } from "./components/BlacesComponents";
+import { Button } from "../../components/DemoComponents";
+import { Icon } from "../../components/DemoComponents";
+import { Canvas } from "../../components/BlacesComponents";
 
-export default function App() {
+type EventPageProps = {
+  params: {
+    eventId: string;
+  };
+};
+
+export default function EventPage({ params }: EventPageProps) {
   const { setFrameReady, isFrameReady, context } = useMiniKit();
   const [frameAdded, setFrameAdded] = useState(false);
+  const { eventId } = params;
 
   const addFrame = useAddFrame();
   const openUrl = useOpenUrl();
@@ -90,11 +97,20 @@ export default function App() {
               </Wallet>
             </div>
           </div>
-          <div>{saveFrameButton}</div>
+          <div className="flex items-center space-x-2">
+            {saveFrameButton}
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => window.location.href = '/'}
+              className="text-foreground-muted hover:text-foreground p-2"
+              icon={<Icon name="close" size="sm" />}
+            />
+          </div>
         </header>
 
         <main className="flex-1">
-          <BlacesHome setActiveTab={() => {}} />
+          <Canvas eventId={eventId} />
         </main>
 
         <footer className="mt-2 pt-4 flex justify-center">
