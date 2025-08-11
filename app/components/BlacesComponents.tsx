@@ -1,6 +1,6 @@
 "use client";
 
-import { type ReactNode, useCallback, useMemo, useState, useEffect } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "./DemoComponents";
 import { Icon } from "./DemoComponents";
 import { Card } from "./DemoComponents";
@@ -23,11 +23,9 @@ const COLORS = [
   '#008000', '#FFC0CB', '#A52A2A', '#808080', '#FFD700'
 ];
 
-type BlacesHomeProps = {
-  setActiveTab: (tab: string) => void;
-};
 
-export function BlacesHome({ setActiveTab }: BlacesHomeProps) {
+
+export function BlacesHome() {
   return (
     <div className="space-y-6 animate-fade-in">
       <Card title="Blaces - Collaborative Canvas">
@@ -37,7 +35,11 @@ export function BlacesHome({ setActiveTab }: BlacesHomeProps) {
         
         <div className="space-y-4">
           <Button
-            onClick={() => window.location.href = '/create-event'}
+            onClick={() => {
+              if (typeof window !== 'undefined') {
+                window.location.href = '/create-event';
+              }
+            }}
             className="w-full"
             icon={<Icon name="plus" size="sm" />}
           >
@@ -46,7 +48,11 @@ export function BlacesHome({ setActiveTab }: BlacesHomeProps) {
           
           <Button
             variant="outline"
-            onClick={() => window.location.href = '/join-event'}
+            onClick={() => {
+              if (typeof window !== 'undefined') {
+                window.location.href = '/join-event';
+              }
+            }}
             className="w-full"
             icon={<Icon name="arrow-right" size="sm" />}
           >
@@ -58,11 +64,9 @@ export function BlacesHome({ setActiveTab }: BlacesHomeProps) {
   );
 }
 
-type CreateEventProps = {
-  setActiveTab: (tab: string) => void;
-};
 
-export function CreateEvent({ setActiveTab }: CreateEventProps) {
+
+export function CreateEvent() {
   const [eventName, setEventName] = useState("");
   const [eventDescription, setEventDescription] = useState("");
   const [eventCode, setEventCode] = useState("");
@@ -77,7 +81,7 @@ export function CreateEvent({ setActiveTab }: CreateEventProps) {
     
     // Generate QR code
     try {
-      const eventUrl = `${window.location.origin}/event/${code}`;
+      const eventUrl = `${typeof window !== 'undefined' ? window.location.origin : ''}/event/${code}`;
       const qrDataUrl = await QRCode.toDataURL(eventUrl, {
         width: 128,
         margin: 2,
@@ -94,7 +98,7 @@ export function CreateEvent({ setActiveTab }: CreateEventProps) {
     setShowQR(true);
   };
 
-  const eventUrl = `${window.location.origin}/event/${eventCode}`;
+  const eventUrl = `${typeof window !== 'undefined' ? window.location.origin : ''}/event/${eventCode}`;
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -130,7 +134,11 @@ export function CreateEvent({ setActiveTab }: CreateEventProps) {
             <div className="flex space-x-3">
               <Button
                 variant="outline"
-                onClick={() => setActiveTab("home")}
+                onClick={() => {
+                  if (typeof window !== 'undefined') {
+                    window.location.href = '/';
+                  }
+                }}
                 className="flex-1"
               >
                 Cancel
@@ -216,13 +224,21 @@ export function CreateEvent({ setActiveTab }: CreateEventProps) {
             <div className="flex space-x-3">
               <Button
                 variant="outline"
-                onClick={() => setActiveTab("home")}
+                onClick={() => {
+                  if (typeof window !== 'undefined') {
+                    window.location.href = '/';
+                  }
+                }}
                 className="flex-1"
               >
                 Back to Home
               </Button>
               <Button
-                onClick={() => window.location.href = eventUrl}
+                onClick={() => {
+                  if (typeof window !== 'undefined') {
+                    window.location.href = eventUrl;
+                  }
+                }}
                 className="flex-1"
               >
                 Join Event
@@ -235,16 +251,16 @@ export function CreateEvent({ setActiveTab }: CreateEventProps) {
   );
 }
 
-type JoinEventProps = {
-  setActiveTab: (tab: string) => void;
-};
 
-export function JoinEvent({ setActiveTab }: JoinEventProps) {
+
+export function JoinEvent() {
   const [eventId, setEventId] = useState("");
 
   const handleJoin = () => {
     if (!eventId.trim()) return;
-    window.location.href = `/event/${eventId.trim()}`;
+    if (typeof window !== 'undefined') {
+      window.location.href = `/event/${eventId.trim()}`;
+    }
   };
 
   return (
@@ -268,7 +284,11 @@ export function JoinEvent({ setActiveTab }: JoinEventProps) {
           <div className="flex space-x-3">
             <Button
               variant="outline"
-              onClick={() => setActiveTab("home")}
+              onClick={() => {
+                if (typeof window !== 'undefined') {
+                  window.location.href = '/';
+                }
+              }}
               className="flex-1"
             >
               Cancel

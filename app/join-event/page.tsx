@@ -94,7 +94,7 @@ export default function JoinEventPage() {
         </header>
 
         <main className="flex-1">
-          <JoinEvent setActiveTab={() => window.location.href = '/'} />
+          <JoinEvent />
         </main>
 
         <footer className="mt-2 pt-4 flex justify-center">

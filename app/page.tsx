@@ -94,7 +94,7 @@ export default function App() {
         </header>
 
         <main className="flex-1">
-          <BlacesHome setActiveTab={() => {}} />
+          <BlacesHome />
         </main>
 
         <footer className="mt-2 pt-4 flex justify-center">
