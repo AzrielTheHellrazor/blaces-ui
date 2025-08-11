@@ -617,7 +617,7 @@ export function Canvas({ eventId }: CanvasProps) {
                 onMouseLeave={handleMouseUp}
                 style={{
                   display: 'block',
-                  cursor: isPanning ? 'grabbing' : 'grab',
+                  cursor: isPanning ? 'grabbing' : 'crosshair',
                   position: 'absolute',
                   top: 0,
                   left: 0
