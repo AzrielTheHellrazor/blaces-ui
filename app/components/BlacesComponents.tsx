@@ -18,7 +18,7 @@ function generateEventCode(): string {
 
 // r/place color palette
 const COLORS = [
-  '#000000', '#FFFFFF', '#BE0039', '#FF4500', '#FFA800', '#FFD635', '#00A368', '#00CC78', '#7EED56', '#2450A4', '#3690EA', '#51E9F4', '#811E9F', '#B44AC0', '#FF99AA', '#9C6926', '#000000', '#898D90', '#D4D7D9', '#FFFFFF'
+  '#000000', '#FFFFFF', '#BE0039', '#FF4500', '#FFA800', '#FFD635', '#00A368', '#00CC78', '#7EED56', '#2450A4', '#3690EA', '#51E9F4', '#811E9F', '#B44AC0', '#FF99AA', '#9C6926', '#898D90', '#D4D7D9'
 ];
 
 
@@ -472,17 +472,9 @@ export function Canvas({ eventId }: CanvasProps) {
     const row = Math.floor(adjustedY / pixelSize);
 
     if (row >= 0 && row < 40 && col >= 0 && col < 40) {
-      if (zoom > 1.5) {
-        // In zoom mode, select the pixel
-        setSelectedPixel({ row, col });
-        setShowPixelSelector(true);
-      } else {
-        // In normal mode, place pixel directly
-        const newPixels = pixels.map((r, i) =>
-          i === row ? r.map((p, j) => j === col ? selectedColor : p) : r
-        );
-        setPixels(newPixels);
-      }
+      // Always select pixel regardless of zoom level
+      setSelectedPixel({ row, col });
+      setShowPixelSelector(true);
     }
     
     // Reset hasMoved for next interaction
@@ -599,7 +591,7 @@ export function Canvas({ eventId }: CanvasProps) {
           {/* Canvas */}
           <div className="flex justify-center">
             <div 
-              className="border border-card-border rounded-lg overflow-hidden bg-white cursor-crosshair"
+              className="border border-card-border overflow-hidden bg-white cursor-crosshair"
               onWheel={handleWheel}
               style={{ 
                 width: '320px', 
@@ -653,9 +645,9 @@ export function Canvas({ eventId }: CanvasProps) {
               Color Palette
             </label>
             <div className="grid grid-cols-5 gap-2 justify-items-center">
-              {COLORS.map((color) => (
+              {COLORS.map((color, index) => (
                 <button
-                  key={color}
+                  key={`${color}-${index}`}
                   className={`w-7 h-7 sm:w-8 sm:h-8 rounded border-2 transition-all touch-manipulation ${
                     selectedColor === color
                       ? 'border-accent scale-110'
