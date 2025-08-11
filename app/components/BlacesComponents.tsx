@@ -400,11 +400,12 @@ export function Canvas({ eventId }: CanvasProps) {
     const containerWidth = 320;
     const containerHeight = 320;
     
-    // Calculate boundaries for current zoom level
-    const maxPanX = Math.max(0, canvasWidth - containerWidth);
-    const maxPanY = Math.max(0, canvasHeight - containerHeight);
-    const minPanX = Math.min(0, containerWidth - canvasWidth);
-    const minPanY = Math.min(0, containerHeight - canvasHeight);
+    // Calculate boundaries based on (0,0) being the top-left pixel
+    // We want the top-left pixel (0,0) to never go outside the container
+    const maxPanX = 0; // Canvas'ın sol kenarı container'ın sol kenarını geçemez
+    const maxPanY = 0; // Canvas'ın üst kenarı container'ın üst kenarını geçemez
+    const minPanX = Math.min(0, containerWidth - canvasWidth); // Canvas'ın sağ kenarı container'ın sağ kenarını geçemez
+    const minPanY = Math.min(0, containerHeight - canvasHeight); // Canvas'ın alt kenarı container'ın alt kenarını geçemez
     
     // Adjust pan to stay within bounds
     const newPanX = Math.max(minPanX, Math.min(maxPanX, pan.x));
@@ -419,27 +420,9 @@ export function Canvas({ eventId }: CanvasProps) {
   const handleWheel = (e: React.WheelEvent) => {
     e.preventDefault();
     const delta = e.deltaY > 0 ? 0.9 : 1.1;
-    const newZoom = Math.max(0.5, Math.min(8, zoom * delta));
-    
-    // Calculate new pan to keep canvas centered and within bounds
-    const pixelSize = Math.max(2, Math.min(16, 8 * newZoom));
-    const canvasWidth = 40 * pixelSize;
-    const canvasHeight = 40 * pixelSize;
-    const containerWidth = 320;
-    const containerHeight = 320;
-    
-    // Calculate boundaries for new zoom level
-    const maxPanX = Math.max(0, canvasWidth - containerWidth);
-    const maxPanY = Math.max(0, canvasHeight - containerHeight);
-    const minPanX = Math.min(0, containerWidth - canvasWidth);
-    const minPanY = Math.min(0, containerHeight - canvasHeight);
-    
-    // Adjust pan to stay within bounds
-    const newPanX = Math.max(minPanX, Math.min(maxPanX, pan.x));
-    const newPanY = Math.max(minPanY, Math.min(maxPanY, pan.y));
+    const newZoom = Math.max(1, Math.min(8, zoom * delta));
     
     setZoom(newZoom);
-    setPan({ x: newPanX, y: newPanY });
   };
 
   // Handle canvas click
@@ -496,16 +479,14 @@ export function Canvas({ eventId }: CanvasProps) {
         const pixelSize = Math.max(2, Math.min(16, 8 * zoom));
         const canvasWidth = 40 * pixelSize;
         const canvasHeight = 40 * pixelSize;
+        const containerWidth = 320;
+        const containerHeight = 320;
         
-        // Calculate container dimensions
-        const containerWidth = 320; // Fixed container width
-        const containerHeight = 320; // Fixed container height
-        
-        // Calculate boundaries to keep canvas visible
-        const maxPanX = Math.max(0, canvasWidth - containerWidth);
-        const maxPanY = Math.max(0, canvasHeight - containerHeight);
-        const minPanX = Math.min(0, containerWidth - canvasWidth);
-        const minPanY = Math.min(0, containerHeight - canvasHeight);
+        // Calculate boundaries based on (0,0) being the top-left pixel
+        const maxPanX = 0; // Canvas'ın sol kenarı container'ın sol kenarını geçemez
+        const maxPanY = 0; // Canvas'ın üst kenarı container'ın üst kenarını geçemez
+        const minPanX = Math.min(0, containerWidth - canvasWidth); // Canvas'ın sağ kenarı container'ın sağ kenarını geçemez
+        const minPanY = Math.min(0, containerHeight - canvasHeight); // Canvas'ın alt kenarı container'ın alt kenarını geçemez
         
         return {
           x: Math.max(minPanX, Math.min(maxPanX, newX)),
