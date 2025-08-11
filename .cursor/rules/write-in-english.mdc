@@ -1,0 +1,92 @@
+---
+description: Write everything in English - code, comments, documentation, and user-facing text.
+globs: "*.ts, *.tsx, *.js, *.jsx, *.md, *.txt, *.json, *.yml, *.yaml"
+alwaysApply: true
+---
+
+Always write everything in English:
+
+## Code and Comments
+- Write all code comments in English
+- Use English variable names, function names, and class names
+- Write error messages in English
+- Use English for console.log statements and debugging output
+
+## Documentation
+- Write README files in English
+- Write API documentation in English
+- Write inline documentation in English
+- Write commit messages in English
+
+## User Interface
+- Write all user-facing text in English
+- Use English for button labels, form fields, and navigation
+- Write error messages displayed to users in English
+- Use English for tooltips and help text
+
+## Configuration Files
+- Write package.json descriptions in English
+- Use English for configuration comments
+- Write environment variable descriptions in English
+
+## Examples
+
+✅ Good:
+```typescript
+// Calculate user score based on activity
+function calculateUserScore(userActivity: UserActivity): number {
+  const baseScore = 100;
+  const activityMultiplier = userActivity.points / 10;
+  return baseScore * activityMultiplier;
+}
+
+// Error handling for invalid input
+if (!userInput) {
+  throw new Error("User input is required");
+}
+```
+
+❌ Bad:
+```typescript
+// Kullanıcı skorunu hesapla
+function kullaniciSkoruHesapla(kullaniciAktivitesi: KullaniciAktivitesi): number {
+  const temelSkor = 100;
+  const aktiviteCarpani = kullaniciAktivitesi.puanlar / 10;
+  return temelSkor * aktiviteCarpani;
+}
+
+// Hatalı giriş kontrolü
+if (!kullaniciGirisi) {
+  throw new Error("Kullanıcı girişi gerekli");
+}
+```
+
+## Package.json Example
+
+✅ Good:
+```json
+{
+  "name": "my-project",
+  "description": "A modern web application built with Next.js and TypeScript",
+  "scripts": {
+    "dev": "Start development server",
+    "build": "Build for production",
+    "test": "Run test suite"
+  }
+}
+```
+
+❌ Bad:
+```json
+{
+  "name": "proje-adi",
+  "description": "Next.js ve TypeScript ile geliştirilmiş modern web uygulaması",
+  "scripts": {
+    "dev": "Geliştirme sunucusunu başlat",
+    "build": "Üretim için derle",
+    "test": "Testleri çalıştır"
+  }
+}
+```
+
+Remember: All code, documentation, comments, and user-facing text must be written in English for consistency and international collaboration.
