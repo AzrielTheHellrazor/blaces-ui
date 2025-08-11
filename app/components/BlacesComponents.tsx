@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Button } from "./DemoComponents";
 import { Icon } from "./DemoComponents";
 import { Card } from "./DemoComponents";
@@ -16,11 +16,9 @@ function generateEventCode(): string {
   return result;
 }
 
-// Color palette for the canvas
+// r/place color palette
 const COLORS = [
-  '#000000', '#FFFFFF', '#FF0000', '#00FF00', '#0000FF', 
-  '#FFFF00', '#FF00FF', '#00FFFF', '#FFA500', '#800080',
-  '#008000', '#FFC0CB', '#A52A2A', '#808080', '#FFD700'
+  '#000000', '#FFFFFF', '#BE0039', '#FF4500', '#FFA800', '#FFD635', '#00A368', '#00CC78', '#7EED56', '#2450A4', '#3690EA', '#51E9F4', '#811E9F', '#B44AC0', '#FF99AA', '#9C6926', '#000000', '#898D90', '#D4D7D9', '#FFFFFF'
 ];
 
 
@@ -315,6 +313,13 @@ export function Canvas({ eventId }: CanvasProps) {
   const [selectedColor, setSelectedColor] = useState(COLORS[0]);
   const [pixels, setPixels] = useState<string[][]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [zoom, setZoom] = useState(1);
+  const [selectedPixel, setSelectedPixel] = useState<{row: number, col: number} | null>(null);
+  const [showPixelSelector, setShowPixelSelector] = useState(false);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [pan, setPan] = useState({ x: 0, y: 0 });
+  const [isPanning, setIsPanning] = useState(false);
+  const [lastPanPoint, setLastPanPoint] = useState({ x: 0, y: 0 });
 
   // Initialize canvas with 40x40 pixels for better performance
   useEffect(() => {
@@ -336,11 +341,203 @@ export function Canvas({ eventId }: CanvasProps) {
     }
   }, [pixels, eventId]);
 
-  const handlePixelClick = (row: number, col: number) => {
-    const newPixels = pixels.map((r, i) =>
-      i === row ? r.map((p, j) => j === col ? selectedColor : p) : r
-    );
-    setPixels(newPixels);
+  // Draw canvas whenever pixels, zoom, or pan changes
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas || pixels.length === 0) return;
+
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    const pixelSize = Math.max(2, Math.min(16, 8 * zoom));
+    const canvasWidth = 40 * pixelSize;
+    const canvasHeight = 40 * pixelSize;
+
+    // Set canvas size
+    canvas.width = canvasWidth;
+    canvas.height = canvasHeight;
+
+    // Clear canvas
+    ctx.clearRect(0, 0, canvasWidth, canvasHeight);
+
+    // Apply pan transformation
+    ctx.save();
+    ctx.translate(pan.x, pan.y);
+
+    // Draw pixels
+    pixels.forEach((row, rowIndex) => {
+      row.forEach((color, colIndex) => {
+        ctx.fillStyle = color;
+        ctx.fillRect(
+          colIndex * pixelSize,
+          rowIndex * pixelSize,
+          pixelSize,
+          pixelSize
+        );
+        
+        // Draw grid lines if zoomed in enough
+        if (pixelSize > 4) {
+          ctx.strokeStyle = '#E5E7EB';
+          ctx.lineWidth = 0.5;
+          ctx.strokeRect(
+            colIndex * pixelSize,
+            rowIndex * pixelSize,
+            pixelSize,
+            pixelSize
+          );
+        }
+      });
+    });
+
+    ctx.restore();
+  }, [pixels, zoom, pan]);
+
+  // Adjust pan when zoom changes to keep canvas within bounds
+  useEffect(() => {
+    const pixelSize = Math.max(2, Math.min(16, 8 * zoom));
+    const canvasWidth = 40 * pixelSize;
+    const canvasHeight = 40 * pixelSize;
+    const containerWidth = 320;
+    const containerHeight = 320;
+    
+    // Calculate boundaries for current zoom level
+    const maxPanX = Math.max(0, canvasWidth - containerWidth);
+    const maxPanY = Math.max(0, canvasHeight - containerHeight);
+    const minPanX = Math.min(0, containerWidth - canvasWidth);
+    const minPanY = Math.min(0, containerHeight - canvasHeight);
+    
+    // Adjust pan to stay within bounds
+    const newPanX = Math.max(minPanX, Math.min(maxPanX, pan.x));
+    const newPanY = Math.max(minPanY, Math.min(maxPanY, pan.y));
+    
+    if (newPanX !== pan.x || newPanY !== pan.y) {
+      setPan({ x: newPanX, y: newPanY });
+    }
+  }, [zoom, pan.x, pan.y]);
+
+  // Mouse wheel zoom handler
+  const handleWheel = (e: React.WheelEvent) => {
+    e.preventDefault();
+    const delta = e.deltaY > 0 ? 0.9 : 1.1;
+    const newZoom = Math.max(0.5, Math.min(8, zoom * delta));
+    
+    // Calculate new pan to keep canvas centered and within bounds
+    const pixelSize = Math.max(2, Math.min(16, 8 * newZoom));
+    const canvasWidth = 40 * pixelSize;
+    const canvasHeight = 40 * pixelSize;
+    const containerWidth = 320;
+    const containerHeight = 320;
+    
+    // Calculate boundaries for new zoom level
+    const maxPanX = Math.max(0, canvasWidth - containerWidth);
+    const maxPanY = Math.max(0, canvasHeight - containerHeight);
+    const minPanX = Math.min(0, containerWidth - canvasWidth);
+    const minPanY = Math.min(0, containerHeight - canvasHeight);
+    
+    // Adjust pan to stay within bounds
+    const newPanX = Math.max(minPanX, Math.min(maxPanX, pan.x));
+    const newPanY = Math.max(minPanY, Math.min(maxPanY, pan.y));
+    
+    setZoom(newZoom);
+    setPan({ x: newPanX, y: newPanY });
+  };
+
+  // Handle canvas click
+  const handleCanvasClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const rect = canvas.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+
+    // Account for pan offset
+    const adjustedX = x - pan.x;
+    const adjustedY = y - pan.y;
+
+    const pixelSize = Math.max(2, Math.min(16, 8 * zoom));
+    const col = Math.floor(adjustedX / pixelSize);
+    const row = Math.floor(adjustedY / pixelSize);
+
+    if (row >= 0 && row < 40 && col >= 0 && col < 40) {
+      if (zoom > 1.5) {
+        // In zoom mode, select the pixel
+        setSelectedPixel({ row, col });
+        setShowPixelSelector(true);
+      } else {
+        // In normal mode, place pixel directly
+        const newPixels = pixels.map((r, i) =>
+          i === row ? r.map((p, j) => j === col ? selectedColor : p) : r
+        );
+        setPixels(newPixels);
+      }
+    }
+  };
+
+  // Handle mouse down for panning
+  const handleMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    if (e.button === 0) { // Left mouse button
+      setIsPanning(true);
+      setLastPanPoint({ x: e.clientX, y: e.clientY });
+    }
+  };
+
+  // Handle mouse move for panning
+  const handleMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    if (isPanning) {
+      const deltaX = e.clientX - lastPanPoint.x;
+      const deltaY = e.clientY - lastPanPoint.y;
+      
+      setPan(prevPan => {
+        const newX = prevPan.x + deltaX;
+        const newY = prevPan.y + deltaY;
+        
+        // Calculate canvas dimensions
+        const pixelSize = Math.max(2, Math.min(16, 8 * zoom));
+        const canvasWidth = 40 * pixelSize;
+        const canvasHeight = 40 * pixelSize;
+        
+        // Calculate container dimensions
+        const containerWidth = 320; // Fixed container width
+        const containerHeight = 320; // Fixed container height
+        
+        // Calculate boundaries to keep canvas visible
+        const maxPanX = Math.max(0, canvasWidth - containerWidth);
+        const maxPanY = Math.max(0, canvasHeight - containerHeight);
+        const minPanX = Math.min(0, containerWidth - canvasWidth);
+        const minPanY = Math.min(0, containerHeight - canvasHeight);
+        
+        return {
+          x: Math.max(minPanX, Math.min(maxPanX, newX)),
+          y: Math.max(minPanY, Math.min(maxPanY, newY))
+        };
+      });
+      
+      setLastPanPoint({ x: e.clientX, y: e.clientY });
+    }
+  };
+
+  // Handle mouse up to stop panning
+  const handleMouseUp = () => {
+    setIsPanning(false);
+  };
+
+  const handlePlacePixel = () => {
+    if (selectedPixel) {
+      const newPixels = pixels.map((r, i) =>
+        i === selectedPixel.row ? r.map((p, j) => j === selectedPixel.col ? selectedColor : p) : r
+      );
+      setPixels(newPixels);
+      setSelectedPixel(null);
+      setShowPixelSelector(false);
+    }
+  };
+
+  const handleResetZoom = () => {
+    setZoom(1);
+    setPan({ x: 0, y: 0 });
+    setSelectedPixel(null);
+    setShowPixelSelector(false);
   };
 
   if (isLoading) {
@@ -352,37 +549,78 @@ export function Canvas({ eventId }: CanvasProps) {
   }
 
   return (
-    <div className="space-y-6 animate-fade-in">
+    <div className="space-y-4 animate-fade-in">
       <Card title={`Blaces Canvas - ${eventId}`}>
         <div className="space-y-4">
+          {/* Zoom Info */}
+          <div className="flex justify-center items-center space-x-2">
+            <span className="text-sm font-medium px-2">
+              Zoom: {zoom.toFixed(1)}x
+            </span>
+            {zoom > 1 && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleResetZoom}
+                className="h-8 px-2"
+              >
+                Reset Zoom
+              </Button>
+            )}
+          </div>
+
           {/* Canvas */}
           <div className="flex justify-center">
-            <div className="border border-card-border rounded-lg overflow-hidden">
-              <div className="grid grid-cols-40 gap-0">
-                {pixels.map((row, rowIndex) =>
-                  row.map((color, colIndex) => (
-                    <div
-                      key={`${rowIndex}-${colIndex}`}
-                      className="w-2 h-2 bg-current cursor-pointer hover:opacity-80 transition-opacity"
-                      style={{ color: color }}
-                      onClick={() => handlePixelClick(rowIndex, colIndex)}
-                    />
-                  ))
-                )}
-              </div>
+            <div 
+              className="border border-card-border rounded-lg overflow-hidden bg-white cursor-crosshair"
+              onWheel={handleWheel}
+              style={{ 
+                width: '320px', 
+                height: '320px', 
+                overflow: 'hidden',
+                position: 'relative'
+              }}
+            >
+              <canvas
+                ref={canvasRef}
+                onClick={handleCanvasClick}
+                onMouseDown={handleMouseDown}
+                onMouseMove={handleMouseMove}
+                onMouseUp={handleMouseUp}
+                onMouseLeave={handleMouseUp}
+                style={{
+                  display: 'block',
+                  cursor: isPanning ? 'grabbing' : 'grab',
+                  position: 'absolute',
+                  top: 0,
+                  left: 0
+                }}
+              />
             </div>
           </div>
 
+          {/* Selected Pixel Info */}
+          {selectedPixel && (
+            <div className="text-center p-2 bg-card-bg rounded-lg border border-card-border">
+              <div className="text-sm text-foreground-muted">
+                Selected Pixel: ({selectedPixel.row + 1}, {selectedPixel.col + 1})
+              </div>
+              <div className="text-xs text-foreground-muted">
+                Current Color: {pixels[selectedPixel.row][selectedPixel.col]}
+              </div>
+            </div>
+          )}
+
           {/* Color Palette */}
           <div>
-            <label className="block text-sm font-medium text-foreground mb-2">
+            <label className="block text-sm font-medium text-foreground mb-2 text-center">
               Color Palette
             </label>
-            <div className="grid grid-cols-5 gap-2">
+            <div className="grid grid-cols-5 gap-2 justify-items-center">
               {COLORS.map((color) => (
                 <button
                   key={color}
-                  className={`w-8 h-8 rounded border-2 transition-all ${
+                  className={`w-7 h-7 sm:w-8 sm:h-8 rounded border-2 transition-all touch-manipulation ${
                     selectedColor === color
                       ? 'border-accent scale-110'
                       : 'border-card-border hover:scale-105'
@@ -394,9 +632,25 @@ export function Canvas({ eventId }: CanvasProps) {
             </div>
           </div>
 
+          {/* Place Pixel Button */}
+          {showPixelSelector && selectedPixel && (
+            <div className="text-center">
+              <Button
+                onClick={handlePlacePixel}
+                className="w-full h-12"
+                icon={<Icon name="check" size="sm" />}
+              >
+                Place Pixel at ({selectedPixel.row + 1}, {selectedPixel.col + 1})
+              </Button>
+            </div>
+          )}
+
           {/* Instructions */}
-          <div className="text-sm text-foreground-muted text-center">
-            Click on any pixel to change its color. Your changes are saved locally.
+          <div className="text-xs sm:text-sm text-foreground-muted text-center">
+            {zoom > 1.5 
+              ? "Click on a pixel to select it, then choose a color and click 'Place Pixel'"
+              : "Use mouse wheel to zoom in/out. Click on any pixel to change its color."
+            }
           </div>
         </div>
       </Card>
