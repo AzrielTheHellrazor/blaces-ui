@@ -501,9 +501,9 @@ export function Canvas({ eventId, canvasSize = 40 }: CanvasProps) {
 
     const pixelSize = Math.max(2, Math.min(actualCanvasSize * 2, 8 * zoom));
     
-    // Calculate pixel coordinates with proper centering
-    const col = Math.floor((adjustedX + pixelSize / 2) / pixelSize);
-    const row = Math.floor((adjustedY + pixelSize / 2) / pixelSize);
+    // Calculate pixel coordinates based on pixel boundaries
+    const col = Math.floor(adjustedX / pixelSize);
+    const row = Math.floor(adjustedY / pixelSize);
 
     if (row >= 0 && row < actualCanvasSize && col >= 0 && col < actualCanvasSize) {
       // Always select pixel regardless of zoom level
@@ -540,9 +540,9 @@ export function Canvas({ eventId, canvasSize = 40 }: CanvasProps) {
 
       const pixelSize = Math.max(2, Math.min(actualCanvasSize * 2, 8 * zoom));
       
-      // Calculate pixel coordinates with proper centering
-      const col = Math.floor((adjustedX + pixelSize / 2) / pixelSize);
-      const row = Math.floor((adjustedY + pixelSize / 2) / pixelSize);
+      // Calculate pixel coordinates based on pixel boundaries
+      const col = Math.floor(adjustedX / pixelSize);
+      const row = Math.floor(adjustedY / pixelSize);
 
       // Only update cursor position if it's within canvas bounds
       if (row >= 0 && row < actualCanvasSize && col >= 0 && col < actualCanvasSize) {
