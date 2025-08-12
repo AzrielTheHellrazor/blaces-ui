@@ -412,7 +412,7 @@ export function Canvas({ eventId }: CanvasProps) {
     // Draw black frame around selected pixel (after all pixels are drawn)
     if (selectedPixel) {
       ctx.strokeStyle = '#000000';
-      ctx.lineWidth = 2;
+      ctx.lineWidth = 1;
       ctx.strokeRect(
         selectedPixel.col * pixelSize,
         selectedPixel.row * pixelSize,
