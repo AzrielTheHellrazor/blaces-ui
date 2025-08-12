@@ -63,6 +63,7 @@ export function BlacesHome() {
 export function CreateEvent() {
   const [eventName, setEventName] = useState("");
   const [eventDescription, setEventDescription] = useState("");
+  const [canvasSize, setCanvasSize] = useState(40);
   const [eventCode, setEventCode] = useState("");
   const [showQR, setShowQR] = useState(false);
   const [qrCodeDataUrl, setQrCodeDataUrl] = useState("");
@@ -72,6 +73,15 @@ export function CreateEvent() {
     
     const code = generateEventCode();
     setEventCode(code);
+    
+    // Save event metadata including canvas size
+    const eventMetadata = {
+      name: eventName,
+      description: eventDescription,
+      canvasSize: canvasSize,
+      createdAt: new Date().toISOString()
+    };
+    localStorage.setItem(`blaces-event-${code}`, JSON.stringify(eventMetadata));
     
     // Generate QR code
     try {
@@ -123,6 +133,22 @@ export function CreateEvent() {
                 rows={3}
                 className="w-full px-3 py-2 bg-card-bg border border-card-border rounded-lg text-foreground placeholder-foreground-muted focus:outline-none focus:ring-1 focus:ring-accent resize-none text-base"
               />
+            </div>
+            
+            <div>
+              <label className="block text-sm font-medium text-foreground mb-2">
+                Canvas Size
+              </label>
+              <select
+                value={canvasSize}
+                onChange={(e) => setCanvasSize(Number(e.target.value))}
+                className="w-full px-3 py-2 bg-card-bg border border-card-border rounded-lg text-foreground focus:outline-none focus:ring-1 focus:ring-accent text-base"
+              >
+                <option value={20}>20x20 (Small)</option>
+                <option value={30}>30x30 (Medium)</option>
+                <option value={40}>40x40 (Large)</option>
+                <option value={50}>50x50 (Extra Large)</option>
+              </select>
             </div>
             
             <div className="flex space-x-3">
@@ -301,9 +327,10 @@ export function JoinEvent() {
 
 type CanvasProps = {
   eventId: string;
+  canvasSize?: number; // Default 40 if not provided
 };
 
-export function Canvas({ eventId }: CanvasProps) {
+export function Canvas({ eventId, canvasSize = 40 }: CanvasProps) {
   const [selectedColor, setSelectedColor] = useState(COLORS[0]);
   const [pixels, setPixels] = useState<string[][]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -315,20 +342,38 @@ export function Canvas({ eventId }: CanvasProps) {
   const [lastPanPoint, setLastPanPoint] = useState({ x: 0, y: 0 });
   const [mouseDownPoint, setMouseDownPoint] = useState({ x: 0, y: 0 });
   const [hasMoved, setHasMoved] = useState(false);
+  const [cursorPosition, setCursorPosition] = useState<{row: number, col: number} | null>(null);
+  const [actualCanvasSize, setActualCanvasSize] = useState(canvasSize);
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
-  // Initialize canvas with 40x40 pixels for better performance
+  // Initialize canvas with dynamic size
   useEffect(() => {
+    // Try to get event metadata to determine canvas size
+    const eventMetadata = localStorage.getItem(`blaces-event-${eventId}`);
+    let eventCanvasSize = canvasSize;
+    
+    if (eventMetadata) {
+      try {
+        const metadata = JSON.parse(eventMetadata);
+        eventCanvasSize = metadata.canvasSize || canvasSize;
+      } catch (error) {
+        console.error('Error parsing event metadata:', error);
+      }
+    }
+    
+    setActualCanvasSize(eventCanvasSize);
+    console.log(`Canvas size for event ${eventId}: ${eventCanvasSize}x${eventCanvasSize}`);
+    
     const savedPixels = localStorage.getItem(`blaces-${eventId}`);
     if (savedPixels) {
       setPixels(JSON.parse(savedPixels));
     } else {
       // Initialize empty canvas
-      const emptyCanvas = Array(40).fill(null).map(() => Array(40).fill('#FFFFFF'));
+      const emptyCanvas = Array(eventCanvasSize).fill(null).map(() => Array(eventCanvasSize).fill('#FFFFFF'));
       setPixels(emptyCanvas);
     }
     setIsLoading(false);
-  }, [eventId]);
+  }, [eventId, canvasSize]);
 
   // Save pixels to localStorage whenever they change
   useEffect(() => {
@@ -346,8 +391,8 @@ export function Canvas({ eventId }: CanvasProps) {
     if (!ctx) return;
 
     const pixelSize = Math.max(2, Math.min(16, 8 * zoom));
-    const canvasWidth = 40 * pixelSize;
-    const canvasHeight = 40 * pixelSize;
+    const canvasWidth = actualCanvasSize * pixelSize;
+    const canvasHeight = actualCanvasSize * pixelSize;
 
     // Set canvas size
     canvas.width = canvasWidth;
@@ -422,15 +467,15 @@ export function Canvas({ eventId }: CanvasProps) {
     }
 
     ctx.restore();
-  }, [pixels, zoom, pan, selectedPixel]);
+  }, [pixels, zoom, pan, selectedPixel, actualCanvasSize]);
 
   // Adjust pan when zoom changes to keep canvas within bounds
   useEffect(() => {
     const pixelSize = Math.max(2, Math.min(16, 8 * zoom));
-    const canvasWidth = 40 * pixelSize;
-    const canvasHeight = 40 * pixelSize;
-    const containerWidth = 320;
-    const containerHeight = 320;
+    const canvasWidth = actualCanvasSize * pixelSize;
+    const canvasHeight = actualCanvasSize * pixelSize;
+    const containerWidth = Math.min(320, actualCanvasSize * 8);
+    const containerHeight = Math.min(320, actualCanvasSize * 8);
     
     // Calculate boundaries based on (0,0) being the top-left pixel
     const maxPanX = 0; // Canvas'ın sol kenarı container'ın sol kenarını geçemez
@@ -445,7 +490,7 @@ export function Canvas({ eventId }: CanvasProps) {
     if (newPanX !== pan.x || newPanY !== pan.y) {
       setPan({ x: newPanX, y: newPanY });
     }
-  }, [zoom, pan.x, pan.y]);
+  }, [zoom, pan.x, pan.y, actualCanvasSize]);
 
   // Mouse wheel zoom handler
   const handleWheel = (e: React.WheelEvent) => {
@@ -481,7 +526,7 @@ export function Canvas({ eventId }: CanvasProps) {
     const col = Math.floor((adjustedX + pixelSize / 2) / pixelSize);
     const row = Math.floor((adjustedY + pixelSize / 2) / pixelSize);
 
-    if (row >= 0 && row < 40 && col >= 0 && col < 40) {
+    if (row >= 0 && row < actualCanvasSize && col >= 0 && col < actualCanvasSize) {
       // Always select pixel regardless of zoom level
       setSelectedPixel({ row, col });
       setShowPixelSelector(true);
@@ -501,8 +546,33 @@ export function Canvas({ eventId }: CanvasProps) {
     }
   };
 
-  // Handle mouse move for panning
+  // Handle mouse move for panning and cursor tracking
   const handleMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    // Track cursor position for coordinate display
+    const canvas = canvasRef.current;
+    if (canvas) {
+      const rect = canvas.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const y = e.clientY - rect.top;
+
+      // Account for pan offset
+      const adjustedX = x - pan.x;
+      const adjustedY = y - pan.y;
+
+      const pixelSize = Math.max(2, Math.min(16, 8 * zoom));
+      
+      // Calculate pixel coordinates with proper centering
+      const col = Math.floor((adjustedX + pixelSize / 2) / pixelSize);
+      const row = Math.floor((adjustedY + pixelSize / 2) / pixelSize);
+
+      // Only update cursor position if it's within canvas bounds
+      if (row >= 0 && row < actualCanvasSize && col >= 0 && col < actualCanvasSize) {
+        setCursorPosition({ row, col });
+      } else {
+        setCursorPosition(null);
+      }
+    }
+
     if (isPanning) {
       const deltaX = e.clientX - lastPanPoint.x;
       const deltaY = e.clientY - lastPanPoint.y;
@@ -549,6 +619,12 @@ export function Canvas({ eventId }: CanvasProps) {
     // Don't reset hasMoved here - let the click handler decide
   };
 
+  // Handle mouse leave to clear cursor position
+  const handleMouseLeave = () => {
+    setIsPanning(false);
+    setCursorPosition(null);
+  };
+
   const handlePlacePixel = () => {
     if (selectedPixel) {
       const newPixels = pixels.map((r, i) =>
@@ -577,7 +653,7 @@ export function Canvas({ eventId }: CanvasProps) {
 
   return (
     <div className="space-y-4 animate-fade-in">
-      <Card title={`Blaces Canvas - ${eventId}`}>
+      <Card title={`Blaces Canvas - ${eventId} (${actualCanvasSize}x${actualCanvasSize})`}>
         <div className="space-y-4">
           {/* Zoom Info */}
           <div className="flex justify-center items-center space-x-2">
@@ -596,14 +672,16 @@ export function Canvas({ eventId }: CanvasProps) {
             )}
           </div>
 
+
+
           {/* Canvas */}
           <div className="flex justify-center">
             <div 
               className="border border-card-border overflow-hidden bg-white cursor-crosshair"
               onWheel={handleWheel}
               style={{ 
-                width: '320px', 
-                height: '320px', 
+                width: `${Math.min(320, actualCanvasSize * 8)}px`, 
+                height: `${Math.min(320, actualCanvasSize * 8)}px`, 
                 overflow: 'hidden',
                 position: 'relative'
               }}
@@ -614,7 +692,7 @@ export function Canvas({ eventId }: CanvasProps) {
                 onMouseDown={handleMouseDown}
                 onMouseMove={handleMouseMove}
                 onMouseUp={handleMouseUp}
-                onMouseLeave={handleMouseUp}
+                onMouseLeave={handleMouseLeave}
                 style={{
                   display: 'block',
                   cursor: isPanning ? 'grabbing' : 'crosshair',
@@ -628,21 +706,15 @@ export function Canvas({ eventId }: CanvasProps) {
 
           {/* Selected Pixel Info */}
           {selectedPixel && (
-            <div 
-              className="text-center p-2 bg-card-bg rounded-lg border border-card-border cursor-pointer hover:bg-card-border transition-colors"
-              onClick={() => {
-                setSelectedPixel({ row: selectedPixel.row, col: selectedPixel.col });
-                setShowPixelSelector(true);
-              }}
-            >
+            <div className="text-center p-2 bg-card-bg rounded-lg border border-card-border">
               <div className="text-sm text-foreground-muted">
                 Selected Pixel: ({selectedPixel.row + 1}, {selectedPixel.col + 1})
               </div>
               <div className="text-xs text-foreground-muted">
-                Current Color: {pixels[selectedPixel.row][selectedPixel.col]}
+                Cursor Position: {cursorPosition ? `(${cursorPosition.row + 1}, ${cursorPosition.col + 1})` : '(0, 0)'}
               </div>
-              <div className="text-xs text-accent mt-1">
-                Click to reselect this pixel
+              <div className="text-xs text-foreground-muted">
+                Current Color: {pixels[selectedPixel.row][selectedPixel.col]}
               </div>
             </div>
           )}
