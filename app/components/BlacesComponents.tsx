@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { Button } from "./DemoComponents";
 import { Icon } from "./DemoComponents";
 import { Card } from "./DemoComponents";
@@ -344,7 +344,21 @@ export function Canvas({ eventId, canvasSize = 40 }: CanvasProps) {
   const [hasMoved, setHasMoved] = useState(false);
   const [cursorPosition, setCursorPosition] = useState<{row: number, col: number} | null>(null);
   const [actualCanvasSize, setActualCanvasSize] = useState(canvasSize);
+  const [touchDistance, setTouchDistance] = useState<number | null>(null);
+  const [touchCenter, setTouchCenter] = useState<{x: number, y: number} | null>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+
+  // Viewport and pixel size helpers to guarantee full canvas visible at zoom = 1
+  const VIEWPORT_SIZE = 320;
+  const getMinPixelSize = useCallback(() => VIEWPORT_SIZE / actualCanvasSize, [actualCanvasSize]);
+  const getMaxPixelSize = useCallback(() => VIEWPORT_SIZE / 5, []);
+  const getPixelSize = useCallback((z: number) => {
+    const min = getMinPixelSize();
+    const max = getMaxPixelSize();
+    const desired = min * z;
+    return Math.max(min, Math.min(max, desired));
+  }, [getMinPixelSize, getMaxPixelSize]);
+  const getMaxZoom = useCallback(() => getMaxPixelSize() / getMinPixelSize(), [getMaxPixelSize, getMinPixelSize]);
 
   // Initialize canvas with dynamic size
   useEffect(() => {
@@ -390,7 +404,7 @@ export function Canvas({ eventId, canvasSize = 40 }: CanvasProps) {
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    const pixelSize = Math.max(2, Math.min(actualCanvasSize * 2, 8 * zoom));
+    const pixelSize = getPixelSize(zoom);
     const canvasWidth = actualCanvasSize * pixelSize;
     const canvasHeight = actualCanvasSize * pixelSize;
 
@@ -401,9 +415,8 @@ export function Canvas({ eventId, canvasSize = 40 }: CanvasProps) {
     // Clear canvas
     ctx.clearRect(0, 0, canvasWidth, canvasHeight);
 
-    // Apply pan transformation
+    // No need to apply pan transformation in canvas context since we're using CSS transform
     ctx.save();
-    ctx.translate(pan.x, pan.y);
 
     // Draw pixels
     pixels.forEach((row, rowIndex) => {
@@ -446,38 +459,70 @@ export function Canvas({ eventId, canvasSize = 40 }: CanvasProps) {
     }
 
     ctx.restore();
-  }, [pixels, zoom, pan, selectedPixel, actualCanvasSize]);
+  }, [pixels, zoom, pan, selectedPixel, actualCanvasSize, getPixelSize]);
 
   // Adjust pan when zoom changes to keep canvas within bounds
   useEffect(() => {
-    const pixelSize = Math.max(2, Math.min(actualCanvasSize * 2, 8 * zoom));
+    const pixelSize = getPixelSize(zoom);
     const canvasWidth = actualCanvasSize * pixelSize;
     const canvasHeight = actualCanvasSize * pixelSize;
-    const containerWidth = Math.min(320, actualCanvasSize * 8);
-    const containerHeight = Math.min(320, actualCanvasSize * 8);
     
-    // Calculate boundaries based on (0,0) being the top-left pixel
-    const maxPanX = 0; // Canvas'ın sol kenarı container'ın sol kenarını geçemez
-    const maxPanY = 0; // Canvas'ın üst kenarı container'ın üst kenarını geçemez
-    const minPanX = Math.min(0, containerWidth - canvasWidth); // Canvas'ın sağ kenarı container'ın sağ kenarını geçemez
-    const minPanY = Math.min(0, containerHeight - canvasHeight); // Canvas'ın alt kenarı container'ın alt kenarını geçemez
+    // If zoom is 1, center the canvas within the 320x320 viewport
+    if (zoom === 1) {
+      const viewportWidth = 320;
+      const viewportHeight = 320;
+      const centerX = (viewportWidth - canvasWidth) / 2;
+      const centerY = (viewportHeight - canvasHeight) / 2;
+      setPan({ x: centerX, y: centerY });
+      return;
+    }
     
-    // Adjust pan to stay within bounds
+    // For other zoom levels, ensure canvas stays within bounds
+    const viewportWidth = 320;
+    const viewportHeight = 320;
+    
+    // Calculate boundaries to keep canvas within viewport
+    const maxPanX = Math.max(0, viewportWidth - canvasWidth);
+    const maxPanY = Math.max(0, viewportHeight - canvasHeight);
+    const minPanX = Math.min(0, viewportWidth - canvasWidth);
+    const minPanY = Math.min(0, viewportHeight - canvasHeight);
+
     const newPanX = Math.max(minPanX, Math.min(maxPanX, pan.x));
     const newPanY = Math.max(minPanY, Math.min(maxPanY, pan.y));
-    
+
     if (newPanX !== pan.x || newPanY !== pan.y) {
       setPan({ x: newPanX, y: newPanY });
     }
-  }, [zoom, pan.x, pan.y, actualCanvasSize]);
+  }, [zoom, pan.x, pan.y, actualCanvasSize, getPixelSize]);
 
   // Mouse wheel zoom handler
   const handleWheel = (e: React.WheelEvent) => {
     e.preventDefault();
+    
+    // Only allow zoom when not panning
+    if (isPanning) return;
+    
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    
+    const rect = canvas.getBoundingClientRect();
+    const mouseX = e.clientX - rect.left;
+    const mouseY = e.clientY - rect.top;
+    
     const delta = e.deltaY > 0 ? 0.9 : 1.1;
-    const newZoom = Math.max(1, Math.min(8, zoom * delta));
+    const maxZoom = getMaxZoom();
+    const newZoom = Math.max(1, Math.min(maxZoom, zoom * delta));
+
+    // Compute pan so the world point under cursor stays under cursor
+    const oldPixel = getPixelSize(zoom);
+    const newPixel = getPixelSize(newZoom);
+    const worldX = (mouseX - pan.x) / oldPixel;
+    const worldY = (mouseY - pan.y) / oldPixel;
+    const newPanX = mouseX - worldX * newPixel;
+    const newPanY = mouseY - worldY * newPixel;
     
     setZoom(newZoom);
+    setPan({ x: newPanX, y: newPanY });
   };
 
   // Handle canvas click
@@ -495,11 +540,11 @@ export function Canvas({ eventId, canvasSize = 40 }: CanvasProps) {
     const x = e.clientX - rect.left;
     const y = e.clientY - rect.top;
 
-    // Account for pan offset
-    const adjustedX = x - pan.x;
-    const adjustedY = y - pan.y;
+    // No need to account for pan offset since we're using CSS transform
+    const adjustedX = x;
+    const adjustedY = y;
 
-    const pixelSize = Math.max(2, Math.min(actualCanvasSize * 2, 8 * zoom));
+    const pixelSize = getPixelSize(zoom);
     
     // Calculate pixel coordinates based on pixel boundaries
     const col = Math.floor(adjustedX / pixelSize);
@@ -527,28 +572,30 @@ export function Canvas({ eventId, canvasSize = 40 }: CanvasProps) {
 
   // Handle mouse move for panning and cursor tracking
   const handleMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    // Track cursor position for coordinate display
-    const canvas = canvasRef.current;
-    if (canvas) {
-      const rect = canvas.getBoundingClientRect();
-      const x = e.clientX - rect.left;
-      const y = e.clientY - rect.top;
+    // Track cursor position for coordinate display (only when not panning)
+    if (!isPanning) {
+      const canvas = canvasRef.current;
+      if (canvas) {
+        const rect = canvas.getBoundingClientRect();
+        const x = e.clientX - rect.left;
+        const y = e.clientY - rect.top;
 
-      // Account for pan offset
-      const adjustedX = x - pan.x;
-      const adjustedY = y - pan.y;
+        // No need to account for pan offset since we're using CSS transform
+        const adjustedX = x;
+        const adjustedY = y;
 
-      const pixelSize = Math.max(2, Math.min(actualCanvasSize * 2, 8 * zoom));
-      
-      // Calculate pixel coordinates based on pixel boundaries
-      const col = Math.floor(adjustedX / pixelSize);
-      const row = Math.floor(adjustedY / pixelSize);
+        const pixelSize = getPixelSize(zoom);
+        
+        // Calculate pixel coordinates based on pixel boundaries
+        const col = Math.floor(adjustedX / pixelSize);
+        const row = Math.floor(adjustedY / pixelSize);
 
-      // Only update cursor position if it's within canvas bounds
-      if (row >= 0 && row < actualCanvasSize && col >= 0 && col < actualCanvasSize) {
-        setCursorPosition({ row, col });
-      } else {
-        setCursorPosition(null);
+        // Only update cursor position if it's within canvas bounds
+        if (row >= 0 && row < actualCanvasSize && col >= 0 && col < actualCanvasSize) {
+          setCursorPosition({ row, col });
+        } else {
+          setCursorPosition(null);
+        }
       }
     }
 
@@ -570,17 +617,17 @@ export function Canvas({ eventId, canvasSize = 40 }: CanvasProps) {
         const newY = prevPan.y + deltaY;
         
         // Calculate canvas dimensions
-        const pixelSize = Math.max(2, Math.min(actualCanvasSize * 2, 8 * zoom));
+        const pixelSize = getPixelSize(zoom);
         const canvasWidth = actualCanvasSize * pixelSize;
         const canvasHeight = actualCanvasSize * pixelSize;
-        const containerWidth = 320;
-        const containerHeight = 320;
+        const viewportWidth = 320;
+        const viewportHeight = 320;
         
-        // Calculate boundaries based on (0,0) being the top-left pixel
-        const maxPanX = 0; // Canvas'ın sol kenarı container'ın sol kenarını geçemez
-        const maxPanY = 0; // Canvas'ın üst kenarı container'ın üst kenarını geçemez
-        const minPanX = Math.min(0, containerWidth - canvasWidth); // Canvas'ın sağ kenarı container'ın sağ kenarını geçemez
-        const minPanY = Math.min(0, containerHeight - canvasHeight); // Canvas'ın alt kenarı container'ın alt kenarını geçemez
+        // Calculate boundaries to keep canvas within viewport
+        const maxPanX = Math.max(0, viewportWidth - canvasWidth);
+        const maxPanY = Math.max(0, viewportHeight - canvasHeight);
+        const minPanX = Math.min(0, viewportWidth - canvasWidth);
+        const minPanY = Math.min(0, viewportHeight - canvasHeight);
         
         return {
           x: Math.max(minPanX, Math.min(maxPanX, newX)),
@@ -604,6 +651,152 @@ export function Canvas({ eventId, canvasSize = 40 }: CanvasProps) {
     setCursorPosition(null);
   };
 
+  // Touch event handlers for mobile zoom
+  const handleTouchStart = (e: React.TouchEvent) => {
+    e.preventDefault();
+    
+    if (e.touches.length === 2) {
+      // Two finger touch - prepare for zoom only
+      const touch1 = e.touches[0];
+      const touch2 = e.touches[1];
+      
+      const distance = Math.sqrt(
+        Math.pow(touch2.clientX - touch1.clientX, 2) + 
+        Math.pow(touch2.clientY - touch1.clientY, 2)
+      );
+      
+      const centerX = (touch1.clientX + touch2.clientX) / 2;
+      const centerY = (touch1.clientY + touch2.clientY) / 2;
+      
+      setTouchDistance(distance);
+      setTouchCenter({ x: centerX, y: centerY });
+      setIsPanning(false); // Disable panning during zoom
+    } else if (e.touches.length === 1) {
+      // Single finger touch - handle panning only
+      const touch = e.touches[0];
+      setIsPanning(true);
+      setHasMoved(false);
+      setMouseDownPoint({ x: touch.clientX, y: touch.clientY });
+      setLastPanPoint({ x: touch.clientX, y: touch.clientY });
+      setTouchDistance(null); // Clear zoom state
+      setTouchCenter(null);
+    }
+  };
+
+  const handleTouchMove = (e: React.TouchEvent) => {
+    e.preventDefault();
+    
+    if (e.touches.length === 2 && touchDistance && touchCenter && !isPanning) {
+      // Two finger touch - handle zoom only (when not panning)
+      const touch1 = e.touches[0];
+      const touch2 = e.touches[1];
+      
+      const newDistance = Math.sqrt(
+        Math.pow(touch2.clientX - touch1.clientX, 2) + 
+        Math.pow(touch2.clientY - touch1.clientY, 2)
+      );
+      
+      const scale = newDistance / touchDistance;
+      const maxZoom = getMaxZoom();
+      const newZoom = Math.max(1, Math.min(maxZoom, zoom * scale));
+      
+      // Calculate zoom center
+      const canvas = canvasRef.current;
+      if (canvas) {
+        const rect = canvas.getBoundingClientRect();
+        const mouseX = touchCenter.x - rect.left;
+        const mouseY = touchCenter.y - rect.top;
+        
+        // Compute pan so the world point under pinch center stays fixed
+        const oldPixel = getPixelSize(zoom);
+        const newPixel = getPixelSize(newZoom);
+        const worldX = (mouseX - pan.x) / oldPixel;
+        const worldY = (mouseY - pan.y) / oldPixel;
+        const newPanX = mouseX - worldX * newPixel;
+        const newPanY = mouseY - worldY * newPixel;
+        
+        setZoom(newZoom);
+        setPan({ x: newPanX, y: newPanY });
+      }
+      
+      setTouchDistance(newDistance);
+    } else if (e.touches.length === 1 && isPanning && !touchDistance) {
+      // Single finger touch - handle panning only (no zoom, no touch distance)
+      const touch = e.touches[0];
+      const deltaX = touch.clientX - lastPanPoint.x;
+      const deltaY = touch.clientY - lastPanPoint.y;
+      
+      const totalDeltaX = touch.clientX - mouseDownPoint.x;
+      const totalDeltaY = touch.clientY - mouseDownPoint.y;
+      const moveThreshold = 5;
+      
+      if (Math.abs(totalDeltaX) > moveThreshold || Math.abs(totalDeltaY) > moveThreshold) {
+        setHasMoved(true);
+      }
+      
+      setPan(prevPan => {
+        const newX = prevPan.x + deltaX;
+        const newY = prevPan.y + deltaY;
+        
+        const pixelSize = getPixelSize(zoom);
+        const canvasWidth = actualCanvasSize * pixelSize;
+        const canvasHeight = actualCanvasSize * pixelSize;
+        const viewportWidth = 320;
+        const viewportHeight = 320;
+        
+        // Calculate boundaries to keep canvas within viewport
+        const maxPanX = Math.max(0, viewportWidth - canvasWidth);
+        const maxPanY = Math.max(0, viewportHeight - canvasHeight);
+        const minPanX = Math.min(0, viewportWidth - canvasWidth);
+        const minPanY = Math.min(0, viewportHeight - canvasHeight);
+        
+        return {
+          x: Math.max(minPanX, Math.min(maxPanX, newX)),
+          y: Math.max(minPanY, Math.min(maxPanY, newY))
+        };
+      });
+      
+      setLastPanPoint({ x: touch.clientX, y: touch.clientY });
+    }
+  };
+
+  const handleTouchEnd = (e: React.TouchEvent) => {
+    e.preventDefault();
+    
+    if (e.touches.length === 0) {
+      // Handle touch click (pixel selection) if no movement occurred
+      if (isPanning && !hasMoved) {
+        const touch = e.changedTouches[0];
+        const canvas = canvasRef.current;
+        if (canvas) {
+          const rect = canvas.getBoundingClientRect();
+          const x = touch.clientX - rect.left;
+          const y = touch.clientY - rect.top;
+
+          // No need to account for pan offset since we're using CSS transform
+          const adjustedX = x;
+          const adjustedY = y;
+
+          const pixelSize = getPixelSize(zoom);
+          
+          // Calculate pixel coordinates based on pixel boundaries
+          const col = Math.floor(adjustedX / pixelSize);
+          const row = Math.floor(adjustedY / pixelSize);
+
+          if (row >= 0 && row < actualCanvasSize && col >= 0 && col < actualCanvasSize) {
+            setSelectedPixel({ row, col });
+            setShowPixelSelector(true);
+          }
+        }
+      }
+      
+      setIsPanning(false);
+      setTouchDistance(null);
+      setTouchCenter(null);
+      setHasMoved(false);
+    }
+  };
+
   const handlePlacePixel = () => {
     if (selectedPixel) {
       const newPixels = pixels.map((r, i) =>
@@ -617,7 +810,19 @@ export function Canvas({ eventId, canvasSize = 40 }: CanvasProps) {
 
   const handleResetZoom = () => {
     setZoom(1);
-    setPan({ x: 0, y: 0 });
+    
+    // Center the canvas when zooming out completely
+    const pixelSize = getPixelSize(1); // zoom = 1 -> fit viewport
+    const canvasWidth = actualCanvasSize * pixelSize;
+    const canvasHeight = actualCanvasSize * pixelSize;
+    const viewportWidth = 320;
+    const viewportHeight = 320;
+    
+    // Calculate center position
+    const centerX = (viewportWidth - canvasWidth) / 2;
+    const centerY = (viewportHeight - canvasHeight) / 2;
+    
+    setPan({ x: centerX, y: centerY });
     setSelectedPixel(null);
     setShowPixelSelector(false);
   };
@@ -636,16 +841,15 @@ export function Canvas({ eventId, canvasSize = 40 }: CanvasProps) {
         <div className="space-y-4">
           {/* Zoom Controls */}
           <div className="flex justify-center items-center space-x-2">
-            {zoom > 1 && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleResetZoom}
-                className="h-8 px-2"
-              >
-                Reset Zoom
-              </Button>
-            )}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleResetZoom}
+              disabled={zoom <= 1}
+              className="h-8 px-2"
+            >
+              Reset Zoom
+            </Button>
           </div>
 
 
@@ -656,8 +860,8 @@ export function Canvas({ eventId, canvasSize = 40 }: CanvasProps) {
               className="border border-card-border overflow-hidden bg-white cursor-crosshair"
               onWheel={handleWheel}
               style={{ 
-                width: `${Math.min(320, actualCanvasSize * 8)}px`, 
-                height: `${Math.min(320, actualCanvasSize * 8)}px`, 
+                width: '320px', 
+                height: '320px', 
                 overflow: 'hidden',
                 position: 'relative'
               }}
@@ -669,12 +873,19 @@ export function Canvas({ eventId, canvasSize = 40 }: CanvasProps) {
                 onMouseMove={handleMouseMove}
                 onMouseUp={handleMouseUp}
                 onMouseLeave={handleMouseLeave}
+                onTouchStart={handleTouchStart}
+                onTouchMove={handleTouchMove}
+                onTouchEnd={handleTouchEnd}
                 style={{
                   display: 'block',
                   cursor: isPanning ? 'grabbing' : 'crosshair',
                   position: 'absolute',
                   top: 0,
-                  left: 0
+                  left: 0,
+                  touchAction: 'none',
+                  userSelect: 'none',
+                  transform: `translate(${pan.x}px, ${pan.y}px)`,
+                  transition: 'none'
                 }}
               />
             </div>
