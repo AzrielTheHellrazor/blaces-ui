@@ -390,7 +390,7 @@ export function Canvas({ eventId, canvasSize = 40 }: CanvasProps) {
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    const pixelSize = Math.max(2, Math.min(16, 8 * zoom));
+    const pixelSize = Math.max(2, Math.min(actualCanvasSize * 2, 8 * zoom));
     const canvasWidth = actualCanvasSize * pixelSize;
     const canvasHeight = actualCanvasSize * pixelSize;
 
@@ -408,31 +408,10 @@ export function Canvas({ eventId, canvasSize = 40 }: CanvasProps) {
     // Draw pixels
     pixels.forEach((row, rowIndex) => {
       row.forEach((color, colIndex) => {
-        // Check if this pixel is in the selected row or column
-        const isInSelectedRow = selectedPixel && rowIndex === selectedPixel.row;
-        const isInSelectedColumn = selectedPixel && colIndex === selectedPixel.col;
-        
         // Check if this is the selected pixel
         const isSelectedPixel = selectedPixel && rowIndex === selectedPixel.row && colIndex === selectedPixel.col;
         
-        // Make selected row and column slightly grayer
-        let finalColor = color;
-        if (isInSelectedRow || isInSelectedColumn) {
-          // Convert hex to RGB, make it grayer, then back to hex
-          const hex = color.replace('#', '');
-          const r = parseInt(hex.substr(0, 2), 16);
-          const g = parseInt(hex.substr(2, 2), 16);
-          const b = parseInt(hex.substr(4, 2), 16);
-          
-          // Blend with gray (50% opacity)
-          const grayR = Math.round(r * 0.5 + 128 * 0.5);
-          const grayG = Math.round(g * 0.5 + 128 * 0.5);
-          const grayB = Math.round(b * 0.5 + 128 * 0.5);
-          
-          finalColor = `#${grayR.toString(16).padStart(2, '0')}${grayG.toString(16).padStart(2, '0')}${grayB.toString(16).padStart(2, '0')}`;
-        }
-        
-        ctx.fillStyle = finalColor;
+        ctx.fillStyle = color;
         ctx.fillRect(
           colIndex * pixelSize,
           rowIndex * pixelSize,
@@ -471,7 +450,7 @@ export function Canvas({ eventId, canvasSize = 40 }: CanvasProps) {
 
   // Adjust pan when zoom changes to keep canvas within bounds
   useEffect(() => {
-    const pixelSize = Math.max(2, Math.min(16, 8 * zoom));
+    const pixelSize = Math.max(2, Math.min(actualCanvasSize * 2, 8 * zoom));
     const canvasWidth = actualCanvasSize * pixelSize;
     const canvasHeight = actualCanvasSize * pixelSize;
     const containerWidth = Math.min(320, actualCanvasSize * 8);
@@ -520,7 +499,7 @@ export function Canvas({ eventId, canvasSize = 40 }: CanvasProps) {
     const adjustedX = x - pan.x;
     const adjustedY = y - pan.y;
 
-    const pixelSize = Math.max(2, Math.min(16, 8 * zoom));
+    const pixelSize = Math.max(2, Math.min(actualCanvasSize * 2, 8 * zoom));
     
     // Calculate pixel coordinates with proper centering
     const col = Math.floor((adjustedX + pixelSize / 2) / pixelSize);
@@ -559,7 +538,7 @@ export function Canvas({ eventId, canvasSize = 40 }: CanvasProps) {
       const adjustedX = x - pan.x;
       const adjustedY = y - pan.y;
 
-      const pixelSize = Math.max(2, Math.min(16, 8 * zoom));
+      const pixelSize = Math.max(2, Math.min(actualCanvasSize * 2, 8 * zoom));
       
       // Calculate pixel coordinates with proper centering
       const col = Math.floor((adjustedX + pixelSize / 2) / pixelSize);
@@ -591,9 +570,9 @@ export function Canvas({ eventId, canvasSize = 40 }: CanvasProps) {
         const newY = prevPan.y + deltaY;
         
         // Calculate canvas dimensions
-        const pixelSize = Math.max(2, Math.min(16, 8 * zoom));
-        const canvasWidth = 40 * pixelSize;
-        const canvasHeight = 40 * pixelSize;
+        const pixelSize = Math.max(2, Math.min(actualCanvasSize * 2, 8 * zoom));
+        const canvasWidth = actualCanvasSize * pixelSize;
+        const canvasHeight = actualCanvasSize * pixelSize;
         const containerWidth = 320;
         const containerHeight = 320;
         
@@ -655,11 +634,8 @@ export function Canvas({ eventId, canvasSize = 40 }: CanvasProps) {
     <div className="space-y-4 animate-fade-in">
       <Card title={`Blaces Canvas - ${eventId} (${actualCanvasSize}x${actualCanvasSize})`}>
         <div className="space-y-4">
-          {/* Zoom Info */}
+          {/* Zoom Controls */}
           <div className="flex justify-center items-center space-x-2">
-            <span className="text-sm font-medium px-2">
-              Zoom: {zoom.toFixed(1)}x
-            </span>
             {zoom > 1 && (
               <Button
                 variant="outline"
