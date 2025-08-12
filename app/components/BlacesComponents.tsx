@@ -21,24 +21,22 @@ const COLORS = [
   '#000000', '#FFFFFF', '#BE0039', '#FF4500', '#FFA800', '#FFD635', '#00A368', '#00CC78', '#7EED56', '#2450A4', '#3690EA', '#51E9F4', '#811E9F', '#B44AC0', '#FF99AA', '#9C6926', '#898D90', '#D4D7D9'
 ];
 
-
-
 export function BlacesHome() {
   return (
-    <div className="space-y-6 animate-fade-in">
+    <div className="space-y-4 animate-fade-in w-full">
       <Card title="Blaces - Collaborative Canvas">
-        <p className="text-foreground-muted mb-6 text-center">
+        <p className="text-foreground-muted mb-6 text-center text-sm">
           Create or join collaborative pixel art events
         </p>
         
-        <div className="space-y-4">
+        <div className="space-y-3">
           <Button
             onClick={() => {
               if (typeof window !== 'undefined') {
                 window.location.href = '/create-event';
               }
             }}
-            className="w-full"
+            className="w-full h-12 text-base"
             icon={<Icon name="plus" size="sm" />}
           >
             Create Event
@@ -51,7 +49,7 @@ export function BlacesHome() {
                 window.location.href = '/join-event';
               }
             }}
-            className="w-full"
+            className="w-full h-12 text-base"
             icon={<Icon name="arrow-right" size="sm" />}
           >
             Join Event
@@ -61,8 +59,6 @@ export function BlacesHome() {
     </div>
   );
 }
-
-
 
 export function CreateEvent() {
   const [eventName, setEventName] = useState("");
@@ -99,7 +95,7 @@ export function CreateEvent() {
   const eventUrl = `${typeof window !== 'undefined' ? window.location.origin : ''}/event/${eventCode}`;
 
   return (
-    <div className="space-y-6 animate-fade-in">
+    <div className="space-y-4 animate-fade-in w-full">
       {!showQR ? (
         <Card title="Create New Event">
           <div className="space-y-4">
@@ -112,7 +108,7 @@ export function CreateEvent() {
                 value={eventName}
                 onChange={(e) => setEventName(e.target.value)}
                 placeholder="Enter event name..."
-                className="w-full px-3 py-2 bg-card-bg border border-card-border rounded-lg text-foreground placeholder-foreground-muted focus:outline-none focus:ring-1 focus:ring-accent"
+                className="w-full px-3 py-2 bg-card-bg border border-card-border rounded-lg text-foreground placeholder-foreground-muted focus:outline-none focus:ring-1 focus:ring-accent text-base"
               />
             </div>
             
@@ -125,7 +121,7 @@ export function CreateEvent() {
                 onChange={(e) => setEventDescription(e.target.value)}
                 placeholder="Enter event description..."
                 rows={3}
-                className="w-full px-3 py-2 bg-card-bg border border-card-border rounded-lg text-foreground placeholder-foreground-muted focus:outline-none focus:ring-1 focus:ring-accent resize-none"
+                className="w-full px-3 py-2 bg-card-bg border border-card-border rounded-lg text-foreground placeholder-foreground-muted focus:outline-none focus:ring-1 focus:ring-accent resize-none text-base"
               />
             </div>
             
@@ -137,14 +133,14 @@ export function CreateEvent() {
                     window.location.href = '/';
                   }
                 }}
-                className="flex-1"
+                className="flex-1 h-12"
               >
                 Cancel
               </Button>
               <Button
                 onClick={handleCreate}
                 disabled={!eventName.trim()}
-                className="flex-1"
+                className="flex-1 h-12"
               >
                 Create
               </Button>
@@ -158,7 +154,7 @@ export function CreateEvent() {
               <div className="text-sm text-foreground-muted mb-1">
                 Event ID:
               </div>
-              <div className="text-2xl font-mono font-bold text-accent">
+              <div className="text-xl sm:text-2xl font-mono font-bold text-accent">
                 {eventCode}
               </div>
             </div>
@@ -167,7 +163,7 @@ export function CreateEvent() {
               <div className="text-sm text-foreground-muted mb-2">
                 QR Code
               </div>
-              <div className="w-32 h-32 mx-auto flex items-center justify-center">
+              <div className="w-28 h-28 sm:w-32 sm:h-32 mx-auto flex items-center justify-center">
                 {qrCodeDataUrl ? (
                   <img 
                     src={qrCodeDataUrl} 
@@ -189,7 +185,7 @@ export function CreateEvent() {
                       link.download = `blaces-event-${eventCode}.png`;
                       link.click();
                     }}
-                    className="w-full"
+                    className="w-full h-10"
                   >
                     Download QR Code
                   </Button>
@@ -206,13 +202,13 @@ export function CreateEvent() {
                   type="text"
                   value={eventUrl}
                   readOnly
-                  className="flex-1 px-3 py-2 bg-card-bg border border-card-border rounded-l-lg text-foreground text-sm"
+                  className="flex-1 px-3 py-2 bg-card-bg border border-card-border rounded-l-lg text-foreground text-xs sm:text-sm"
                 />
                 <Button
                   variant="primary"
                   size="sm"
                   onClick={() => navigator.clipboard.writeText(eventUrl)}
-                  className="rounded-l-none"
+                  className="rounded-l-none h-10"
                 >
                   Copy
                 </Button>
@@ -227,7 +223,7 @@ export function CreateEvent() {
                     window.location.href = '/';
                   }
                 }}
-                className="flex-1"
+                className="flex-1 h-12"
               >
                 Back to Home
               </Button>
@@ -237,7 +233,7 @@ export function CreateEvent() {
                     window.location.href = eventUrl;
                   }
                 }}
-                className="flex-1"
+                className="flex-1 h-12"
               >
                 Join Event
               </Button>
@@ -248,8 +244,6 @@ export function CreateEvent() {
     </div>
   );
 }
-
-
 
 export function JoinEvent() {
   const [eventId, setEventId] = useState("");
@@ -262,7 +256,7 @@ export function JoinEvent() {
   };
 
   return (
-    <div className="space-y-6 animate-fade-in">
+    <div className="space-y-4 animate-fade-in w-full">
       <Card title="Join Event">
         <div className="space-y-4">
           <div>
@@ -275,7 +269,7 @@ export function JoinEvent() {
               onChange={(e) => setEventId(e.target.value)}
               placeholder="Enter 8-character event code..."
               maxLength={8}
-              className="w-full px-3 py-2 bg-card-bg border border-card-border rounded-lg text-foreground placeholder-foreground-muted focus:outline-none focus:ring-1 focus:ring-accent font-mono text-center text-lg"
+              className="w-full px-3 py-2 bg-card-bg border border-card-border rounded-lg text-foreground placeholder-foreground-muted focus:outline-none focus:ring-1 focus:ring-accent font-mono text-center text-base sm:text-lg"
             />
           </div>
           
@@ -287,14 +281,14 @@ export function JoinEvent() {
                   window.location.href = '/';
                 }
               }}
-              className="flex-1"
+              className="flex-1 h-12"
             >
               Cancel
             </Button>
             <Button
               onClick={handleJoin}
               disabled={!eventId.trim() || eventId.length !== 8}
-              className="flex-1"
+              className="flex-1 h-12"
             >
               Join Event
             </Button>
@@ -316,12 +310,12 @@ export function Canvas({ eventId }: CanvasProps) {
   const [zoom, setZoom] = useState(1);
   const [selectedPixel, setSelectedPixel] = useState<{row: number, col: number} | null>(null);
   const [showPixelSelector, setShowPixelSelector] = useState(false);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const [isPanning, setIsPanning] = useState(false);
   const [lastPanPoint, setLastPanPoint] = useState({ x: 0, y: 0 });
   const [mouseDownPoint, setMouseDownPoint] = useState({ x: 0, y: 0 });
   const [hasMoved, setHasMoved] = useState(false);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
 
   // Initialize canvas with 40x40 pixels for better performance
   useEffect(() => {
@@ -373,6 +367,9 @@ export function Canvas({ eventId }: CanvasProps) {
         const isInSelectedRow = selectedPixel && rowIndex === selectedPixel.row;
         const isInSelectedColumn = selectedPixel && colIndex === selectedPixel.col;
         
+        // Check if this is the selected pixel
+        const isSelectedPixel = selectedPixel && rowIndex === selectedPixel.row && colIndex === selectedPixel.col;
+        
         // Make selected row and column slightly grayer
         let finalColor = color;
         if (isInSelectedRow || isInSelectedColumn) {
@@ -398,8 +395,8 @@ export function Canvas({ eventId }: CanvasProps) {
           pixelSize
         );
         
-        // Draw grid lines if zoomed in enough
-        if (pixelSize > 4) {
+        // Draw grid lines if zoomed in enough (but not for selected pixel)
+        if (!isSelectedPixel && pixelSize > 4) {
           ctx.strokeStyle = '#E5E7EB';
           ctx.lineWidth = 0.5;
           ctx.strokeRect(
@@ -411,6 +408,18 @@ export function Canvas({ eventId }: CanvasProps) {
         }
       });
     });
+
+    // Draw black frame around selected pixel (after all pixels are drawn)
+    if (selectedPixel) {
+      ctx.strokeStyle = '#000000';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(
+        selectedPixel.col * pixelSize,
+        selectedPixel.row * pixelSize,
+        pixelSize,
+        pixelSize
+      );
+    }
 
     ctx.restore();
   }, [pixels, zoom, pan, selectedPixel]);
@@ -424,7 +433,6 @@ export function Canvas({ eventId }: CanvasProps) {
     const containerHeight = 320;
     
     // Calculate boundaries based on (0,0) being the top-left pixel
-    // We want the top-left pixel (0,0) to never go outside the container
     const maxPanX = 0; // Canvas'ın sol kenarı container'ın sol kenarını geçemez
     const maxPanY = 0; // Canvas'ın üst kenarı container'ın üst kenarını geçemez
     const minPanX = Math.min(0, containerWidth - canvasWidth); // Canvas'ın sağ kenarı container'ın sağ kenarını geçemez
@@ -468,8 +476,10 @@ export function Canvas({ eventId }: CanvasProps) {
     const adjustedY = y - pan.y;
 
     const pixelSize = Math.max(2, Math.min(16, 8 * zoom));
-    const col = Math.floor(adjustedX / pixelSize);
-    const row = Math.floor(adjustedY / pixelSize);
+    
+    // Calculate pixel coordinates with proper centering
+    const col = Math.floor((adjustedX + pixelSize / 2) / pixelSize);
+    const row = Math.floor((adjustedY + pixelSize / 2) / pixelSize);
 
     if (row >= 0 && row < 40 && col >= 0 && col < 40) {
       // Always select pixel regardless of zoom level
@@ -490,8 +500,6 @@ export function Canvas({ eventId }: CanvasProps) {
       setLastPanPoint({ x: e.clientX, y: e.clientY });
     }
   };
-
-
 
   // Handle mouse move for panning
   const handleMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
@@ -675,10 +683,7 @@ export function Canvas({ eventId }: CanvasProps) {
 
           {/* Instructions */}
           <div className="text-xs sm:text-sm text-foreground-muted text-center">
-            {zoom > 1.5 
-              ? "Click on a pixel to select it, then choose a color and click 'Place Pixel'"
-              : "Use mouse wheel to zoom in/out. Click on any pixel to change its color."
-            }
+            Use mouse wheel to zoom in/out. Click on any pixel to select it.
           </div>
         </div>
       </Card>
