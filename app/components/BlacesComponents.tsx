@@ -5,6 +5,7 @@ import { Button } from "./DemoComponents";
 import { Icon } from "./DemoComponents";
 import { Card } from "./DemoComponents";
 import QRCode from "qrcode";
+// import { ImageUpload } from "./ImageUpload"; // Temporarily disabled
 
 // Utility function to generate random event code
 function generateEventCode(): string {
@@ -85,8 +86,9 @@ export function CreateEvent() {
     
     // Generate QR code
     try {
-      const eventUrl = `${typeof window !== 'undefined' ? window.location.origin : ''}/event/${code}`;
-      const qrDataUrl = await QRCode.toDataURL(eventUrl, {
+      // Use correct Farcaster mini app URL format
+      const farcasterUrl = `https://farcaster.xyz/miniapps/nJEe4IGqnsUT/blaces/event/${code}`;
+      const qrDataUrl = await QRCode.toDataURL(farcasterUrl, {
         width: 128,
         margin: 2,
         color: {
@@ -102,7 +104,7 @@ export function CreateEvent() {
     setShowQR(true);
   };
 
-  const eventUrl = `${typeof window !== 'undefined' ? window.location.origin : ''}/event/${eventCode}`;
+  const eventUrl = `https://farcaster.xyz/miniapps/nJEe4IGqnsUT/blaces/event/${eventCode}`;
 
   return (
     <div className="space-y-4 animate-fade-in w-full">
@@ -333,6 +335,9 @@ type CanvasProps = {
 export function Canvas({ eventId, canvasSize = 40 }: CanvasProps) {
   const [selectedColor, setSelectedColor] = useState(COLORS[0]);
   const [pixels, setPixels] = useState<string[][]>([]);
+  // const [silhouetteOverlay, setSilhouetteOverlay] = useState<string[][]>([]);
+  // const [showSilhouette, setShowSilhouette] = useState(false);
+  // const [showMatchingFeedback, setShowMatchingFeedback] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [zoom, setZoom] = useState(1);
   const [selectedPixel, setSelectedPixel] = useState<{row: number, col: number} | null>(null);
@@ -432,6 +437,32 @@ export function Canvas({ eventId, canvasSize = 40 }: CanvasProps) {
           pixelSize
         );
         
+        // Draw matching feedback if enabled and silhouette is available - Temporarily disabled
+        // if (showMatchingFeedback && silhouetteOverlay.length > 0) {
+        //   const isCorrect = isPixelCorrect(rowIndex, colIndex);
+        //   if (isCorrect) {
+        //     // Draw green border for correct pixels
+        //     ctx.strokeStyle = '#10B981';
+        //     ctx.lineWidth = 2;
+        //     ctx.strokeRect(
+        //       colIndex * pixelSize,
+        //       rowIndex * pixelSize,
+        //       pixelSize,
+        //       pixelSize
+        //     );
+        //   } else if (color !== '#FFFFFF') {
+        //     // Draw red border for incorrect pixels (only if not white/empty)
+        //     ctx.strokeStyle = '#EF4444';
+        //     ctx.lineWidth = 2;
+        //     ctx.strokeRect(
+        //       colIndex * pixelSize,
+        //       rowIndex * pixelSize,
+        //       pixelSize,
+        //       pixelSize
+        //     );
+        //   }
+        // }
+        
         // Draw grid lines if zoomed in enough (but not for selected pixel)
         if (!isSelectedPixel && pixelSize > 4) {
           ctx.strokeStyle = '#E5E7EB';
@@ -445,6 +476,26 @@ export function Canvas({ eventId, canvasSize = 40 }: CanvasProps) {
         }
       });
     });
+
+    // Draw silhouette overlay if enabled and available - Temporarily disabled
+    // if (showSilhouette && silhouetteOverlay.length > 0) {
+    //   silhouetteOverlay.forEach((row, rowIndex) => {
+    //     row.forEach((color, colIndex) => {
+    //       if (rowIndex < actualCanvasSize && colIndex < actualCanvasSize) {
+    //         // Draw silhouette as semi-transparent overlay
+    //         ctx.globalAlpha = 0.3;
+    //         ctx.fillStyle = color;
+    //         ctx.fillRect(
+    //           colIndex * pixelSize,
+    //           rowIndex * pixelSize,
+    //           pixelSize,
+    //           pixelSize
+    //         );
+    //         ctx.globalAlpha = 1.0;
+    //       }
+    //     });
+    //   });
+    // }
 
     // Draw black frame around selected pixel (after all pixels are drawn)
     if (selectedPixel) {
@@ -827,6 +878,42 @@ export function Canvas({ eventId, canvasSize = 40 }: CanvasProps) {
     setShowPixelSelector(false);
   };
 
+  // Handle image upload for silhouette overlay - Temporarily disabled
+  // const handleImageUpload = (pixelData: string[][]) => {
+  //   setSilhouetteOverlay(pixelData);
+  //   setShowSilhouette(true);
+  // };
+
+  // Toggle silhouette overlay visibility - Temporarily disabled
+  // const toggleSilhouette = () => {
+  //   setShowSilhouette(!showSilhouette);
+  // };
+
+  // Clear silhouette overlay - Temporarily disabled
+  // const clearSilhouette = () => {
+  //   setSilhouetteOverlay([]);
+  //   setShowSilhouette(false);
+  //   setShowMatchingFeedback(false);
+  // };
+
+  // Check if a pixel matches the target silhouette - Temporarily disabled
+  // const isPixelCorrect = (row: number, col: number): boolean => {
+  //   if (!silhouetteOverlay.length || row >= silhouetteOverlay.length || col >= silhouetteOverlay[0].length) {
+  //     return false;
+  //   }
+  //   
+  //   const targetColor = silhouetteOverlay[row][col];
+  //   const currentColor = pixels[row][col];
+  //   
+  //   // Simple color matching - can be enhanced with color similarity
+  //   return targetColor === currentColor;
+  // };
+
+  // Toggle matching feedback - Temporarily disabled
+  // const toggleMatchingFeedback = () => {
+  //   setShowMatchingFeedback(!showMatchingFeedback);
+  // };
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -839,6 +926,39 @@ export function Canvas({ eventId, canvasSize = 40 }: CanvasProps) {
     <div className="space-y-4 animate-fade-in">
       <Card title={`Blaces Canvas - ${eventId} (${actualCanvasSize}x${actualCanvasSize})`}>
         <div className="space-y-4">
+          {/* Image Upload - Temporarily disabled */}
+          {/* <ImageUpload onImageUpload={handleImageUpload} canvasSize={actualCanvasSize} /> */}
+
+          {/* Silhouette Controls - Temporarily disabled */}
+          {/* {silhouetteOverlay.length > 0 && (
+            <div className="flex justify-center items-center space-x-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={toggleSilhouette}
+                className={`h-8 px-2 ${showSilhouette ? 'bg-accent text-white' : ''}`}
+              >
+                {showSilhouette ? 'Hide' : 'Show'} Silhouette
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={toggleMatchingFeedback}
+                className={`h-8 px-2 ${showMatchingFeedback ? 'bg-green-500 text-white' : ''}`}
+              >
+                {showMatchingFeedback ? 'Hide' : 'Show'} Feedback
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={clearSilhouette}
+                className="h-8 px-2"
+              >
+                Clear Silhouette
+              </Button>
+            </div>
+          )} */}
+
           {/* Zoom Controls */}
           <div className="flex justify-center items-center space-x-2">
             <Button
