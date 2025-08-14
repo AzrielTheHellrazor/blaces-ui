@@ -17,7 +17,7 @@ export function ImageUpload({ onImageUpload, canvasSize }: ImageUploadProps) {
   const [showPreview, setShowPreview] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Convert image to pixel data with advanced processing
+  // Convert image to pixel data with 8-bit color quantization
   const processImage = useCallback((file: File): Promise<string[][]> => {
     return new Promise((resolve, reject) => {
       const img = new Image();
@@ -69,7 +69,15 @@ export function ImageUpload({ onImageUpload, canvasSize }: ImageUploadProps) {
           const imageData = ctx.getImageData(0, 0, canvasSize, canvasSize);
           const data = imageData.data;
 
-          // Convert to 2D array of hex colors with color quantization
+          // 8-bit color quantization (256 colors)
+          const colorMap = new Map<string, string>();
+          const rPlaceColors = [
+            '#000000', '#FFFFFF', '#BE0039', '#FF4500', '#FFA800', '#FFD635', '#00A368', '#00CC78', 
+            '#7EED56', '#2450A4', '#3690EA', '#51E9F4', '#811E9F', '#B44AC0', '#FF99AA', '#9C6926', 
+            '#898D90', '#D4D7D9'
+          ];
+
+          // Convert to 2D array of hex colors with 8-bit quantization
           const pixelData: string[][] = [];
           for (let y = 0; y < canvasSize; y++) {
             const row: string[] = [];
@@ -86,9 +94,29 @@ export function ImageUpload({ onImageUpload, canvasSize }: ImageUploadProps) {
                 continue;
               }
 
-              // Convert to hex color
-              const hex = `#${((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1)}`;
-              row.push(hex);
+              // Convert to 8-bit color (quantize to nearest r/place color or create 8-bit equivalent)
+              const originalHex = `#${((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1)}`;
+              
+              // Check if we already processed this color
+              if (colorMap.has(originalHex)) {
+                row.push(colorMap.get(originalHex)!);
+                continue;
+              }
+
+              // Find nearest r/place color or create 8-bit equivalent
+              let quantizedColor = findNearestColor(r, g, b, rPlaceColors);
+              
+              // If we have room for more colors, create 8-bit equivalent
+              if (colorMap.size < 256) {
+                // Simple 8-bit quantization: reduce each channel to 6 bits (64 levels each)
+                const r6 = Math.round(r / 4) * 4;
+                const g6 = Math.round(g / 4) * 4;
+                const b6 = Math.round(b / 4) * 4;
+                quantizedColor = `#${((1 << 24) + (r6 << 16) + (g6 << 8) + b6).toString(16).slice(1)}`;
+              }
+
+              colorMap.set(originalHex, quantizedColor);
+              row.push(quantizedColor);
             }
             pixelData.push(row);
           }
@@ -103,6 +131,32 @@ export function ImageUpload({ onImageUpload, canvasSize }: ImageUploadProps) {
       img.src = URL.createObjectURL(file);
     });
   }, [canvasSize, pixelSize]);
+
+  // Helper function to find nearest color from r/place palette
+  const findNearestColor = (r: number, g: number, b: number, palette: string[]): string => {
+    let minDistance = Infinity;
+    let nearestColor = palette[0];
+
+    for (const color of palette) {
+      const hex = color.slice(1);
+      const paletteR = parseInt(hex.slice(0, 2), 16);
+      const paletteG = parseInt(hex.slice(2, 4), 16);
+      const paletteB = parseInt(hex.slice(4, 6), 16);
+
+      const distance = Math.sqrt(
+        Math.pow(r - paletteR, 2) + 
+        Math.pow(g - paletteG, 2) + 
+        Math.pow(b - paletteB, 2)
+      );
+
+      if (distance < minDistance) {
+        minDistance = distance;
+        nearestColor = color;
+      }
+    }
+
+    return nearestColor;
+  };
 
   // Handle file selection
   const handleFileSelect = useCallback(async (file: File) => {
@@ -171,7 +225,7 @@ export function ImageUpload({ onImageUpload, canvasSize }: ImageUploadProps) {
       >
         <div className="space-y-3">
           <Icon 
-            name="upload" 
+            name="plus" 
             size="lg" 
             className={`mx-auto ${isDragOver ? 'text-accent' : 'text-foreground-muted'}`}
           />

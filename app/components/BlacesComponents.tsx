@@ -5,7 +5,7 @@ import { Button } from "./DemoComponents";
 import { Icon } from "./DemoComponents";
 import { Card } from "./DemoComponents";
 import QRCode from "qrcode";
-// import { ImageUpload } from "./ImageUpload"; // Temporarily disabled
+// import { ImageUpload } from "./ImageUpload"; // Simplified upload system
 
 // Utility function to generate random event code
 function generateEventCode(): string {
@@ -146,10 +146,11 @@ export function CreateEvent() {
                 onChange={(e) => setCanvasSize(Number(e.target.value))}
                 className="w-full px-3 py-2 bg-card-bg border border-card-border rounded-lg text-foreground focus:outline-none focus:ring-1 focus:ring-accent text-base"
               >
-                <option value={20}>20x20 (Small)</option>
-                <option value={30}>30x30 (Medium)</option>
-                <option value={40}>40x40 (Large)</option>
-                <option value={50}>50x50 (Extra Large)</option>
+                <option value={200}>200x200 (Small)</option>
+                <option value={250}>250x250 (Medium)</option>
+                <option value={300}>300x300 (Large)</option>
+                <option value={350}>350x350 (Extra Large)</option>
+                <option value={400}>400x400 (Huge)</option>
               </select>
             </div>
             
@@ -329,15 +330,15 @@ export function JoinEvent() {
 
 type CanvasProps = {
   eventId: string;
-  canvasSize?: number; // Default 40 if not provided
+  canvasSize?: number; // Default 300 if not provided
 };
 
-export function Canvas({ eventId, canvasSize = 40 }: CanvasProps) {
+export function Canvas({ eventId, canvasSize = 300 }: CanvasProps) {
   const [selectedColor, setSelectedColor] = useState(COLORS[0]);
   const [pixels, setPixels] = useState<string[][]>([]);
-  // const [silhouetteOverlay, setSilhouetteOverlay] = useState<string[][]>([]);
-  // const [showSilhouette, setShowSilhouette] = useState(false);
-  // const [showMatchingFeedback, setShowMatchingFeedback] = useState(false);
+  const [silhouetteOverlay, setSilhouetteOverlay] = useState<string[][]>([]);
+  const [showSilhouette, setShowSilhouette] = useState(false);
+  const [showMatchingFeedback, setShowMatchingFeedback] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [zoom, setZoom] = useState(1);
   const [selectedPixel, setSelectedPixel] = useState<{row: number, col: number} | null>(null);
@@ -463,8 +464,34 @@ export function Canvas({ eventId, canvasSize = 40 }: CanvasProps) {
         //   }
         // }
         
-        // Draw grid lines if zoomed in enough (but not for selected pixel)
-        if (!isSelectedPixel && pixelSize > 4) {
+        // Draw matching feedback if enabled and silhouette is available
+        if (showMatchingFeedback && silhouetteOverlay.length > 0) {
+          const isCorrect = isPixelCorrect(rowIndex, colIndex);
+          if (isCorrect) {
+            // Draw green border for correct pixels
+            ctx.strokeStyle = '#10B981';
+            ctx.lineWidth = 2;
+            ctx.strokeRect(
+              colIndex * pixelSize,
+              rowIndex * pixelSize,
+              pixelSize,
+              pixelSize
+            );
+          } else if (color !== '#FFFFFF') {
+            // Draw red border for incorrect pixels (only if not white/empty)
+            ctx.strokeStyle = '#EF4444';
+            ctx.lineWidth = 2;
+            ctx.strokeRect(
+              colIndex * pixelSize,
+              rowIndex * pixelSize,
+              pixelSize,
+              pixelSize
+            );
+          }
+        }
+        
+        // Draw grid lines if zoomed in enough (but not for selected pixel or when showing feedback)
+        if (!isSelectedPixel && pixelSize > 4 && !showMatchingFeedback) {
           ctx.strokeStyle = '#E5E7EB';
           ctx.lineWidth = 0.5;
           ctx.strokeRect(
@@ -477,25 +504,30 @@ export function Canvas({ eventId, canvasSize = 40 }: CanvasProps) {
       });
     });
 
-    // Draw silhouette overlay if enabled and available - Temporarily disabled
-    // if (showSilhouette && silhouetteOverlay.length > 0) {
-    //   silhouetteOverlay.forEach((row, rowIndex) => {
-    //     row.forEach((color, colIndex) => {
-    //       if (rowIndex < actualCanvasSize && colIndex < actualCanvasSize) {
-    //         // Draw silhouette as semi-transparent overlay
-    //         ctx.globalAlpha = 0.3;
-    //         ctx.fillStyle = color;
-    //         ctx.fillRect(
-    //           colIndex * pixelSize,
-    //           rowIndex * pixelSize,
-    //           pixelSize,
-    //           pixelSize
-    //         );
-    //         ctx.globalAlpha = 1.0;
-    //       }
-    //     });
-    //   });
-    // }
+    // Draw silhouette overlay if enabled and available
+    if (showSilhouette && silhouetteOverlay.length > 0) {
+      // Calculate silhouette size (half of canvas)
+      const silhouetteSize = Math.floor(actualCanvasSize / 2);
+      const startX = Math.floor((actualCanvasSize - silhouetteSize) / 2);
+      const startY = Math.floor((actualCanvasSize - silhouetteSize) / 2);
+      
+      silhouetteOverlay.forEach((row, rowIndex) => {
+        row.forEach((color, colIndex) => {
+          if (rowIndex < silhouetteSize && colIndex < silhouetteSize) {
+            // Draw silhouette as semi-transparent overlay (centered and smaller)
+            ctx.globalAlpha = 0.3;
+            ctx.fillStyle = color;
+            ctx.fillRect(
+              (startX + colIndex) * pixelSize,
+              (startY + rowIndex) * pixelSize,
+              pixelSize,
+              pixelSize
+            );
+            ctx.globalAlpha = 1.0;
+          }
+        });
+      });
+    }
 
     // Draw black frame around selected pixel (after all pixels are drawn)
     if (selectedPixel) {
@@ -878,23 +910,149 @@ export function Canvas({ eventId, canvasSize = 40 }: CanvasProps) {
     setShowPixelSelector(false);
   };
 
-  // Handle image upload for silhouette overlay - Temporarily disabled
-  // const handleImageUpload = (pixelData: string[][]) => {
-  //   setSilhouetteOverlay(pixelData);
-  //   setShowSilhouette(true);
-  // };
+  // Handle file selection for image upload
+  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
 
-  // Toggle silhouette overlay visibility - Temporarily disabled
-  // const toggleSilhouette = () => {
-  //   setShowSilhouette(!showSilhouette);
-  // };
+    if (!file.type.startsWith('image/')) {
+      alert('Please select an image file');
+      return;
+    }
 
-  // Clear silhouette overlay - Temporarily disabled
-  // const clearSilhouette = () => {
-  //   setSilhouetteOverlay([]);
-  //   setShowSilhouette(false);
-  //   setShowMatchingFeedback(false);
-  // };
+    try {
+      const pixelData = await processImageToPixels(file, actualCanvasSize);
+      setSilhouetteOverlay(pixelData);
+      setShowSilhouette(true);
+    } catch (error) {
+      console.error('Error processing image:', error);
+      alert('Error processing image. Please try again.');
+    }
+  };
+
+  // Process image to pixel data with 8-bit quantization
+  const processImageToPixels = (file: File, canvasSize: number): Promise<string[][]> => {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+
+      if (!ctx) {
+        reject(new Error('Could not get canvas context'));
+        return;
+      }
+
+      img.onload = () => {
+        try {
+          // Set canvas size (half size for silhouette)
+          const silhouetteSize = Math.floor(canvasSize / 2);
+          canvas.width = silhouetteSize;
+          canvas.height = silhouetteSize;
+
+          // Draw and scale image to half size
+          ctx.drawImage(img, 0, 0, silhouetteSize, silhouetteSize);
+
+          // Get pixel data
+          const imageData = ctx.getImageData(0, 0, silhouetteSize, silhouetteSize);
+          const data = imageData.data;
+
+          // r/place color palette
+          const rPlaceColors = [
+            '#000000', '#FFFFFF', '#BE0039', '#FF4500', '#FFA800', '#FFD635', '#00A368', '#00CC78', 
+            '#7EED56', '#2450A4', '#3690EA', '#51E9F4', '#811E9F', '#B44AC0', '#FF99AA', '#9C6926', 
+            '#898D90', '#D4D7D9'
+          ];
+
+          // Convert to pixel data with 8-bit quantization
+          const pixelData: string[][] = [];
+          for (let y = 0; y < silhouetteSize; y++) {
+            const row: string[] = [];
+            for (let x = 0; x < silhouetteSize; x++) {
+              const index = (y * silhouetteSize + x) * 4;
+              const r = data[index];
+              const g = data[index + 1];
+              const b = data[index + 2];
+              const a = data[index + 3];
+
+              // Skip transparent pixels
+              if (a < 128) {
+                row.push('#FFFFFF');
+                continue;
+              }
+
+              // Find nearest r/place color
+              const quantizedColor = findNearestColor(r, g, b, rPlaceColors);
+              row.push(quantizedColor);
+            }
+            pixelData.push(row);
+          }
+
+          resolve(pixelData);
+        } catch (error) {
+          reject(error);
+        }
+      };
+
+      img.onerror = () => reject(new Error('Failed to load image'));
+      img.src = URL.createObjectURL(file);
+    });
+  };
+
+  // Helper function to find nearest color
+  const findNearestColor = (r: number, g: number, b: number, palette: string[]): string => {
+    let minDistance = Infinity;
+    let nearestColor = palette[0];
+
+    for (const color of palette) {
+      const hex = color.slice(1);
+      const paletteR = parseInt(hex.slice(0, 2), 16);
+      const paletteG = parseInt(hex.slice(2, 4), 16);
+      const paletteB = parseInt(hex.slice(4, 6), 16);
+
+      const distance = Math.sqrt(
+        Math.pow(r - paletteR, 2) + 
+        Math.pow(g - paletteG, 2) + 
+        Math.pow(b - paletteB, 2)
+      );
+
+      if (distance < minDistance) {
+        minDistance = distance;
+        nearestColor = color;
+      }
+    }
+
+    return nearestColor;
+  };
+
+  // Toggle silhouette overlay visibility
+  const toggleSilhouette = () => {
+    setShowSilhouette(!showSilhouette);
+  };
+
+  // Clear silhouette overlay
+  const clearSilhouette = () => {
+    setSilhouetteOverlay([]);
+    setShowSilhouette(false);
+    setShowMatchingFeedback(false);
+  };
+
+  // Check if a pixel matches the target silhouette
+  const isPixelCorrect = (row: number, col: number): boolean => {
+    if (!silhouetteOverlay.length || row >= silhouetteOverlay.length || col >= silhouetteOverlay[0].length) {
+      return false;
+    }
+    
+    const targetColor = silhouetteOverlay[row][col];
+    const currentColor = pixels[row][col];
+    
+    // Simple color matching - can be enhanced with color similarity
+    return targetColor === currentColor;
+  };
+
+  // Toggle matching feedback
+  const toggleMatchingFeedback = () => {
+    setShowMatchingFeedback(!showMatchingFeedback);
+  };
 
   // Check if a pixel matches the target silhouette - Temporarily disabled
   // const isPixelCorrect = (row: number, col: number): boolean => {
@@ -926,11 +1084,38 @@ export function Canvas({ eventId, canvasSize = 40 }: CanvasProps) {
     <div className="space-y-4 animate-fade-in">
       <Card title={`Blaces Canvas - ${eventId} (${actualCanvasSize}x${actualCanvasSize})`}>
         <div className="space-y-4">
-          {/* Image Upload - Temporarily disabled */}
-          {/* <ImageUpload onImageUpload={handleImageUpload} canvasSize={actualCanvasSize} /> */}
+          {/* Zoom Controls */}
+          <div className="flex justify-center items-center space-x-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleResetZoom}
+              disabled={zoom <= 1}
+              className="h-8 px-2"
+            >
+              Reset Zoom
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => document.getElementById('image-upload')?.click()}
+              className="h-8 px-2"
+            >
+              Select Image
+            </Button>
+          </div>
 
-          {/* Silhouette Controls - Temporarily disabled */}
-          {/* {silhouetteOverlay.length > 0 && (
+          {/* Hidden file input */}
+          <input
+            id="image-upload"
+            type="file"
+            accept="image/*"
+            onChange={handleFileSelect}
+            className="hidden"
+          />
+
+          {/* Silhouette Controls */}
+          {silhouetteOverlay.length > 0 && (
             <div className="flex justify-center items-center space-x-2">
               <Button
                 variant="outline"
@@ -957,20 +1142,7 @@ export function Canvas({ eventId, canvasSize = 40 }: CanvasProps) {
                 Clear Silhouette
               </Button>
             </div>
-          )} */}
-
-          {/* Zoom Controls */}
-          <div className="flex justify-center items-center space-x-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleResetZoom}
-              disabled={zoom <= 1}
-              className="h-8 px-2"
-            >
-              Reset Zoom
-            </Button>
-          </div>
+          )}
 
 
 
