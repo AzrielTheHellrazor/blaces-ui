@@ -337,8 +337,11 @@ export function Canvas({ eventId, canvasSize = 300 }: CanvasProps) {
   const [selectedColor, setSelectedColor] = useState(COLORS[0]);
   const [pixels, setPixels] = useState<string[][]>([]);
   const [silhouetteOverlay, setSilhouetteOverlay] = useState<string[][]>([]);
+  const [silhouettePosition, setSilhouettePosition] = useState({ x: 0, y: 0 });
   const [showSilhouette, setShowSilhouette] = useState(false);
   const [showMatchingFeedback, setShowMatchingFeedback] = useState(false);
+  const [isDraggingSilhouette, setIsDraggingSilhouette] = useState(false);
+  const [isSilhouetteLocked, setIsSilhouetteLocked] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [zoom, setZoom] = useState(1);
   const [selectedPixel, setSelectedPixel] = useState<{row: number, col: number} | null>(null);
@@ -352,6 +355,17 @@ export function Canvas({ eventId, canvasSize = 300 }: CanvasProps) {
   const [actualCanvasSize, setActualCanvasSize] = useState(canvasSize);
   const [touchDistance, setTouchDistance] = useState<number | null>(null);
   const [touchCenter, setTouchCenter] = useState<{x: number, y: number} | null>(null);
+  
+  // State for single uploaded image
+  const [uploadedImage, setUploadedImage] = useState<{
+    pixelData: string[][];
+    position: { x: number; y: number };
+    size: { width: number; height: number };
+    isDragging: boolean;
+  } | null>(null);
+  const [isDraggingImage, setIsDraggingImage] = useState(false);
+  const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
+  
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   // Viewport and pixel size helpers to guarantee full canvas visible at zoom = 1
@@ -504,17 +518,69 @@ export function Canvas({ eventId, canvasSize = 300 }: CanvasProps) {
       });
     });
 
-    // Draw silhouette overlay if enabled and available
+    // Draw uploaded image
+    if (uploadedImage) {
+      const imgX = uploadedImage.position.x * pixelSize;
+      const imgY = uploadedImage.position.y * pixelSize;
+      const imgWidth = uploadedImage.size.width * pixelSize;
+      const imgHeight = uploadedImage.size.height * pixelSize;
+      
+      // Draw image border if dragging
+      if (uploadedImage.isDragging) {
+        ctx.strokeStyle = '#3B82F6';
+        ctx.lineWidth = 2;
+        ctx.strokeRect(imgX - 2, imgY - 2, imgWidth + 4, imgHeight + 4);
+      }
+      
+      // Draw image pixels
+      uploadedImage.pixelData.forEach((row: string[], rowIndex: number) => {
+        row.forEach((color: string, colIndex: number) => {
+          if (rowIndex < uploadedImage.size.height && colIndex < uploadedImage.size.width) {
+            const pixelX = imgX + colIndex * pixelSize;
+            const pixelY = imgY + rowIndex * pixelSize;
+            
+            // Only draw if pixel is within canvas bounds
+            if (pixelX >= 0 && pixelX < canvasWidth && pixelY >= 0 && pixelY < canvasHeight) {
+              ctx.fillStyle = color;
+              ctx.fillRect(pixelX, pixelY, pixelSize, pixelSize);
+            }
+          }
+        });
+      });
+    }
+
+    // Draw silhouette overlay if enabled and available (for backward compatibility)
     if (showSilhouette && silhouetteOverlay.length > 0) {
       // Calculate silhouette size (half of canvas)
       const silhouetteSize = Math.floor(actualCanvasSize / 2);
-      const startX = Math.floor((actualCanvasSize - silhouetteSize) / 2);
-      const startY = Math.floor((actualCanvasSize - silhouetteSize) / 2);
+      const startX = silhouettePosition.x;
+      const startY = silhouettePosition.y;
+      
+      // Draw silhouette border if dragging or locked
+      if (isDraggingSilhouette) {
+        ctx.strokeStyle = '#FF6B6B';
+        ctx.lineWidth = 2;
+        ctx.strokeRect(
+          startX * pixelSize - 2,
+          startY * pixelSize - 2,
+          silhouetteSize * pixelSize + 4,
+          silhouetteSize * pixelSize + 4
+        );
+      } else if (isSilhouetteLocked) {
+        ctx.strokeStyle = '#EF4444';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(
+          startX * pixelSize - 1,
+          startY * pixelSize - 1,
+          silhouetteSize * pixelSize + 2,
+          silhouetteSize * pixelSize + 2
+        );
+      }
       
       silhouetteOverlay.forEach((row, rowIndex) => {
         row.forEach((color, colIndex) => {
           if (rowIndex < silhouetteSize && colIndex < silhouetteSize) {
-            // Draw silhouette as semi-transparent overlay (centered and smaller)
+            // Draw silhouette as semi-transparent overlay
             ctx.globalAlpha = 0.3;
             ctx.fillStyle = color;
             ctx.fillRect(
@@ -542,7 +608,7 @@ export function Canvas({ eventId, canvasSize = 300 }: CanvasProps) {
     }
 
     ctx.restore();
-  }, [pixels, zoom, pan, selectedPixel, actualCanvasSize, getPixelSize]);
+  }, [pixels, zoom, pan, selectedPixel, actualCanvasSize, getPixelSize, uploadedImage, silhouettePosition, isDraggingSilhouette, isSilhouetteLocked]);
 
   // Adjust pan when zoom changes to keep canvas within bounds
   useEffect(() => {
@@ -643,9 +709,62 @@ export function Canvas({ eventId, canvasSize = 300 }: CanvasProps) {
     setHasMoved(false);
   };
 
-  // Handle mouse down for panning
+  // Handle mouse down for panning and image dragging
   const handleMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
     if (e.button === 0) { // Left mouse button
+      const canvas = canvasRef.current;
+      if (!canvas) return;
+
+      const rect = canvas.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const y = e.clientY - rect.top;
+      const adjustedX = x;
+      const adjustedY = y;
+
+      // Check if clicking on uploaded image
+      if (uploadedImage) {
+        const pixelSize = getPixelSize(zoom);
+        const imgX = uploadedImage.position.x * pixelSize;
+        const imgY = uploadedImage.position.y * pixelSize;
+        const imgWidth = uploadedImage.size.width * pixelSize;
+        const imgHeight = uploadedImage.size.height * pixelSize;
+        
+        if (adjustedX >= imgX && adjustedX <= imgX + imgWidth &&
+            adjustedY >= imgY && adjustedY <= imgY + imgHeight) {
+          // Start dragging the image
+          setIsDraggingImage(true);
+          setDragOffset({
+            x: adjustedX - uploadedImage.position.x * pixelSize,
+            y: adjustedY - uploadedImage.position.y * pixelSize
+          });
+          
+          setUploadedImage({ ...uploadedImage, isDragging: true });
+          return;
+        }
+      }
+
+      // Check if clicking on silhouette overlay
+      if (showSilhouette && silhouetteOverlay.length > 0 && !isSilhouetteLocked) {
+        const pixelSize = getPixelSize(zoom);
+        const silhouetteSize = Math.floor(actualCanvasSize / 2);
+        const silhouetteX = silhouettePosition.x * pixelSize;
+        const silhouetteY = silhouettePosition.y * pixelSize;
+        const silhouetteWidth = silhouetteSize * pixelSize;
+        const silhouetteHeight = silhouetteSize * pixelSize;
+        
+        if (adjustedX >= silhouetteX && adjustedX <= silhouetteX + silhouetteWidth &&
+            adjustedY >= silhouetteY && adjustedY <= silhouetteY + silhouetteHeight) {
+          // Start dragging the silhouette
+          setIsDraggingSilhouette(true);
+          setDragOffset({
+            x: adjustedX - silhouettePosition.x * pixelSize,
+            y: adjustedY - silhouettePosition.y * pixelSize
+          });
+          return;
+        }
+      }
+
+      // If not clicking on an image, start panning
       setIsPanning(true);
       setHasMoved(false);
       setMouseDownPoint({ x: e.clientX, y: e.clientY });
@@ -653,32 +772,67 @@ export function Canvas({ eventId, canvasSize = 300 }: CanvasProps) {
     }
   };
 
-  // Handle mouse move for panning and cursor tracking
+  // Handle mouse move for panning, cursor tracking, and image dragging
   const handleMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const rect = canvas.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    const adjustedX = x;
+    const adjustedY = y;
+
+    // Handle image dragging
+    if (isDraggingImage && uploadedImage) {
+      const pixelSize = getPixelSize(zoom);
+      const newX = (adjustedX - dragOffset.x) / pixelSize;
+      const newY = (adjustedY - dragOffset.y) / pixelSize;
+      
+      // Constrain image to canvas bounds
+      const constrainedX = Math.max(0, Math.min(actualCanvasSize - 1, newX));
+      const constrainedY = Math.max(0, Math.min(actualCanvasSize - 1, newY));
+      
+      // Snap to pixel grid
+      const snappedX = Math.round(constrainedX);
+      const snappedY = Math.round(constrainedY);
+      
+      setUploadedImage({ ...uploadedImage, position: { x: snappedX, y: snappedY } });
+      return;
+    }
+
+    // Handle silhouette dragging
+    if (isDraggingSilhouette) {
+      const pixelSize = getPixelSize(zoom);
+      const newX = (adjustedX - dragOffset.x) / pixelSize;
+      const newY = (adjustedY - dragOffset.y) / pixelSize;
+      
+      // Constrain silhouette to canvas bounds
+      const silhouetteSize = Math.floor(actualCanvasSize / 2);
+      const constrainedX = Math.max(0, Math.min(actualCanvasSize - silhouetteSize, newX));
+      const constrainedY = Math.max(0, Math.min(actualCanvasSize - silhouetteSize, newY));
+      
+      // Snap to pixel grid while dragging
+      const snappedX = Math.round(constrainedX);
+      const snappedY = Math.round(constrainedY);
+      
+      setSilhouettePosition({ x: snappedX, y: snappedY });
+      return;
+    }
+
     // Track cursor position for coordinate display (only when not panning)
     if (!isPanning) {
-      const canvas = canvasRef.current;
-      if (canvas) {
-        const rect = canvas.getBoundingClientRect();
-        const x = e.clientX - rect.left;
-        const y = e.clientY - rect.top;
+      const pixelSize = getPixelSize(zoom);
+      
+      // Calculate pixel coordinates based on pixel boundaries
+      const col = Math.floor(adjustedX / pixelSize);
+      const row = Math.floor(adjustedY / pixelSize);
 
-        // No need to account for pan offset since we're using CSS transform
-        const adjustedX = x;
-        const adjustedY = y;
-
-        const pixelSize = getPixelSize(zoom);
-        
-        // Calculate pixel coordinates based on pixel boundaries
-        const col = Math.floor(adjustedX / pixelSize);
-        const row = Math.floor(adjustedY / pixelSize);
-
-        // Only update cursor position if it's within canvas bounds
-        if (row >= 0 && row < actualCanvasSize && col >= 0 && col < actualCanvasSize) {
-          setCursorPosition({ row, col });
-        } else {
-          setCursorPosition(null);
-        }
+      // Only update cursor position if it's within canvas bounds
+      if (row >= 0 && row < actualCanvasSize && col >= 0 && col < actualCanvasSize) {
+        setCursorPosition({ row, col });
+      } else {
+        setCursorPosition(null);
       }
     }
 
@@ -722,8 +876,30 @@ export function Canvas({ eventId, canvasSize = 300 }: CanvasProps) {
     }
   };
 
-  // Handle mouse up to stop panning
+  // Handle mouse up to stop panning and image dragging
   const handleMouseUp = () => {
+    // Stop image dragging
+    if (isDraggingImage && uploadedImage) {
+      setUploadedImage({ ...uploadedImage, isDragging: false });
+      setIsDraggingImage(false);
+      setDragOffset({ x: 0, y: 0 });
+    }
+    
+    // Stop silhouette dragging and snap to pixel grid
+    if (isDraggingSilhouette) {
+      // Snap silhouette to pixel grid - align top-left corner to pixel boundary
+      const currentX = silhouettePosition.x;
+      const currentY = silhouettePosition.y;
+      
+      // Round to nearest pixel boundary
+      const snappedX = Math.round(currentX);
+      const snappedY = Math.round(currentY);
+      
+      setSilhouettePosition({ x: snappedX, y: snappedY });
+      setIsDraggingSilhouette(false);
+      setDragOffset({ x: 0, y: 0 });
+    }
+    
     setIsPanning(false);
     // Don't reset hasMoved here - let the click handler decide
   };
@@ -910,7 +1086,7 @@ export function Canvas({ eventId, canvasSize = 300 }: CanvasProps) {
     setShowPixelSelector(false);
   };
 
-  // Handle file selection for image upload
+  // Handle file selection for 16bit image upload
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -922,6 +1098,19 @@ export function Canvas({ eventId, canvasSize = 300 }: CanvasProps) {
 
     try {
       const pixelData = await processImageToPixels(file, actualCanvasSize);
+      
+      const imageSize = Math.floor(actualCanvasSize / 2); // Half size for uploaded images
+      
+      const newImage = {
+        pixelData: pixelData,
+        position: { x: 50, y: 50 }, // Default position
+        size: { width: imageSize, height: imageSize },
+        isDragging: false
+      };
+      
+      setUploadedImage(newImage);
+      
+      // Also set as silhouette overlay for backward compatibility
       setSilhouetteOverlay(pixelData);
       setShowSilhouette(true);
     } catch (error) {
@@ -1036,6 +1225,17 @@ export function Canvas({ eventId, canvasSize = 300 }: CanvasProps) {
     setShowMatchingFeedback(false);
   };
 
+
+
+  // Toggle silhouette lock
+  const toggleSilhouetteLock = () => {
+    setIsSilhouetteLocked(!isSilhouetteLocked);
+  };
+
+
+
+
+
   // Check if a pixel matches the target silhouette
   const isPixelCorrect = (row: number, col: number): boolean => {
     if (!silhouetteOverlay.length || row >= silhouetteOverlay.length || col >= silhouetteOverlay[0].length) {
@@ -1133,6 +1333,15 @@ export function Canvas({ eventId, canvasSize = 300 }: CanvasProps) {
               >
                 {showMatchingFeedback ? 'Hide' : 'Show'} Feedback
               </Button>
+
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={toggleSilhouetteLock}
+                className={`h-8 px-2 ${isSilhouetteLocked ? 'bg-red-500 text-white' : ''}`}
+              >
+                {isSilhouetteLocked ? 'Unlock' : 'Lock'} Silhouette
+              </Button>
               <Button
                 variant="outline"
                 size="sm"
@@ -1143,6 +1352,8 @@ export function Canvas({ eventId, canvasSize = 300 }: CanvasProps) {
               </Button>
             </div>
           )}
+
+
 
 
 
@@ -1234,7 +1445,17 @@ export function Canvas({ eventId, canvasSize = 300 }: CanvasProps) {
 
           {/* Instructions */}
           <div className="text-xs sm:text-sm text-foreground-muted text-center">
-            Use mouse wheel to zoom in/out. Click on any pixel to select it.
+            Use mouse wheel to zoom in/out. Click on any pixel to select it. 
+            {uploadedImage && (
+              <span className="block mt-1">
+                Drag uploaded image to reposition it. Image automatically snaps to pixel grid.
+              </span>
+            )}
+            {showSilhouette && silhouetteOverlay.length > 0 && (
+              <span className="block mt-1">
+                Drag silhouette overlay to reposition it. Silhouette automatically snaps to pixel grid. Use &quot;Lock Silhouette&quot; to prevent movement.
+              </span>
+            )}
           </div>
         </div>
       </Card>
