@@ -409,10 +409,14 @@ export function Canvas({ eventId, canvasSize = 300 }: CanvasProps) {
     setIsLoading(false);
   }, [eventId, canvasSize]);
 
-  // Save pixels to localStorage whenever they change
+  // Save pixels to localStorage with debouncing
   useEffect(() => {
     if (pixels.length > 0) {
-      localStorage.setItem(`blaces-${eventId}`, JSON.stringify(pixels));
+      const timeoutId = setTimeout(() => {
+        localStorage.setItem(`blaces-${eventId}`, JSON.stringify(pixels));
+      }, 1000); // Save after 1 second of no changes
+      
+      return () => clearTimeout(timeoutId);
     }
   }, [pixels, eventId]);
 
@@ -438,51 +442,40 @@ export function Canvas({ eventId, canvasSize = 300 }: CanvasProps) {
     // No need to apply pan transformation in canvas context since we're using CSS transform
     ctx.save();
 
-    // Draw pixels
-    pixels.forEach((row, rowIndex) => {
-      row.forEach((color, colIndex) => {
-        // Check if this is the selected pixel
-        const isSelectedPixel = selectedPixel && rowIndex === selectedPixel.row && colIndex === selectedPixel.col;
-        
+    // Optimized pixel drawing with batch operations
+    const drawPixels = () => {
+      // Group pixels by color for batch drawing
+      const colorGroups = new Map<string, Array<{x: number, y: number}>>();
+      
+      pixels.forEach((row, rowIndex) => {
+        row.forEach((color, colIndex) => {
+          if (!colorGroups.has(color)) {
+            colorGroups.set(color, []);
+          }
+          colorGroups.get(color)!.push({
+            x: colIndex * pixelSize,
+            y: rowIndex * pixelSize
+          });
+        });
+      });
+      
+      // Draw each color group in batches
+      colorGroups.forEach((positions, color) => {
         ctx.fillStyle = color;
-        ctx.fillRect(
-          colIndex * pixelSize,
-          rowIndex * pixelSize,
-          pixelSize,
-          pixelSize
-        );
-        
-        // Draw matching feedback if enabled and silhouette is available - Temporarily disabled
-        // if (showMatchingFeedback && silhouetteOverlay.length > 0) {
-        //   const isCorrect = isPixelCorrect(rowIndex, colIndex);
-        //   if (isCorrect) {
-        //     // Draw green border for correct pixels
-        //     ctx.strokeStyle = '#10B981';
-        //     ctx.lineWidth = 2;
-        //     ctx.strokeRect(
-        //       colIndex * pixelSize,
-        //       rowIndex * pixelSize,
-        //       pixelSize,
-        //       pixelSize
-        //     );
-        //   } else if (color !== '#FFFFFF') {
-        //     // Draw red border for incorrect pixels (only if not white/empty)
-        //     ctx.strokeStyle = '#EF4444';
-        //     ctx.lineWidth = 2;
-        //     ctx.strokeRect(
-        //       colIndex * pixelSize,
-        //       rowIndex * pixelSize,
-        //       pixelSize,
-        //       pixelSize
-        //     );
-        //   }
-        // }
-        
-        // Draw matching feedback if enabled and silhouette is available
-        if (showMatchingFeedback && silhouetteOverlay.length > 0) {
+        positions.forEach(pos => {
+          ctx.fillRect(pos.x, pos.y, pixelSize, pixelSize);
+        });
+      });
+    };
+    
+    drawPixels();
+    
+    // Draw feedback and borders separately for better performance
+    if (showMatchingFeedback && silhouetteOverlay.length > 0) {
+      pixels.forEach((row, rowIndex) => {
+        row.forEach((color, colIndex) => {
           const isCorrect = isPixelCorrect(rowIndex, colIndex);
           if (isCorrect) {
-            // Draw green border for correct pixels
             ctx.strokeStyle = '#10B981';
             ctx.lineWidth = 2;
             ctx.strokeRect(
@@ -492,7 +485,6 @@ export function Canvas({ eventId, canvasSize = 300 }: CanvasProps) {
               pixelSize
             );
           } else if (color !== '#FFFFFF') {
-            // Draw red border for incorrect pixels (only if not white/empty)
             ctx.strokeStyle = '#EF4444';
             ctx.lineWidth = 2;
             ctx.strokeRect(
@@ -502,21 +494,30 @@ export function Canvas({ eventId, canvasSize = 300 }: CanvasProps) {
               pixelSize
             );
           }
-        }
-        
-        // Draw grid lines if zoomed in enough (but not for selected pixel or when showing feedback)
-        if (!isSelectedPixel && pixelSize > 4 && !showMatchingFeedback) {
-          ctx.strokeStyle = '#E5E7EB';
-          ctx.lineWidth = 0.5;
-          ctx.strokeRect(
-            colIndex * pixelSize,
-            rowIndex * pixelSize,
-            pixelSize,
-            pixelSize
-          );
-        }
+        });
       });
-    });
+    }
+    
+    // Draw grid lines only when needed
+    if (pixelSize > 4 && !showMatchingFeedback) {
+      ctx.strokeStyle = '#E5E7EB';
+      ctx.lineWidth = 0.5;
+      
+      // Draw grid lines in batches
+      for (let i = 0; i <= actualCanvasSize; i++) {
+        const pos = i * pixelSize;
+        // Vertical lines
+        ctx.beginPath();
+        ctx.moveTo(pos, 0);
+        ctx.lineTo(pos, canvasHeight);
+        ctx.stroke();
+        // Horizontal lines
+        ctx.beginPath();
+        ctx.moveTo(0, pos);
+        ctx.lineTo(canvasWidth, pos);
+        ctx.stroke();
+      }
+    }
 
     // Draw uploaded image
     if (uploadedImage) {
@@ -910,7 +911,7 @@ export function Canvas({ eventId, canvasSize = 300 }: CanvasProps) {
     setCursorPosition(null);
   };
 
-  // Touch event handlers for mobile zoom
+  // Optimized touch event handlers for mobile
   const handleTouchStart = (e: React.TouchEvent) => {
     e.preventDefault();
     
@@ -933,17 +934,115 @@ export function Canvas({ eventId, canvasSize = 300 }: CanvasProps) {
     } else if (e.touches.length === 1) {
       // Single finger touch - handle panning only
       const touch = e.touches[0];
+      
+      // Check if touching on image or silhouette first
+      const canvas = canvasRef.current;
+      if (canvas) {
+        const rect = canvas.getBoundingClientRect();
+        const x = touch.clientX - rect.left;
+        const y = touch.clientY - rect.top;
+        
+        // Check for image touch
+        if (uploadedImage) {
+          const pixelSize = getPixelSize(zoom);
+          const imgX = uploadedImage.position.x * pixelSize;
+          const imgY = uploadedImage.position.y * pixelSize;
+          const imgWidth = uploadedImage.size.width * pixelSize;
+          const imgHeight = uploadedImage.size.height * pixelSize;
+          
+          if (x >= imgX && x <= imgX + imgWidth && y >= imgY && y <= imgY + imgHeight) {
+            setIsDraggingImage(true);
+            setDragOffset({
+              x: x - uploadedImage.position.x * pixelSize,
+              y: y - uploadedImage.position.y * pixelSize
+            });
+            setUploadedImage({ ...uploadedImage, isDragging: true });
+            return;
+          }
+        }
+        
+        // Check for silhouette touch
+        if (showSilhouette && silhouetteOverlay.length > 0 && !isSilhouetteLocked) {
+          const pixelSize = getPixelSize(zoom);
+          const silhouetteSize = Math.floor(actualCanvasSize / 2);
+          const silhouetteX = silhouettePosition.x * pixelSize;
+          const silhouetteY = silhouettePosition.y * pixelSize;
+          const silhouetteWidth = silhouetteSize * pixelSize;
+          const silhouetteHeight = silhouetteSize * pixelSize;
+          
+          if (x >= silhouetteX && x <= silhouetteX + silhouetteWidth &&
+              y >= silhouetteY && y <= silhouetteY + silhouetteHeight) {
+            setIsDraggingSilhouette(true);
+            setDragOffset({
+              x: x - silhouettePosition.x * pixelSize,
+              y: y - silhouettePosition.y * pixelSize
+            });
+            return;
+          }
+        }
+      }
+      
+      // If not touching interactive elements, start panning
       setIsPanning(true);
       setHasMoved(false);
       setMouseDownPoint({ x: touch.clientX, y: touch.clientY });
       setLastPanPoint({ x: touch.clientX, y: touch.clientY });
-      setTouchDistance(null); // Clear zoom state
+      setTouchDistance(null);
       setTouchCenter(null);
     }
   };
 
   const handleTouchMove = (e: React.TouchEvent) => {
     e.preventDefault();
+    
+    // Handle image dragging on touch
+    if (isDraggingImage && uploadedImage) {
+      const touch = e.touches[0];
+      const canvas = canvasRef.current;
+      if (canvas) {
+        const rect = canvas.getBoundingClientRect();
+        const x = touch.clientX - rect.left;
+        const y = touch.clientY - rect.top;
+        
+        const pixelSize = getPixelSize(zoom);
+        const newX = (x - dragOffset.x) / pixelSize;
+        const newY = (y - dragOffset.y) / pixelSize;
+        
+        const constrainedX = Math.max(0, Math.min(actualCanvasSize - 1, newX));
+        const constrainedY = Math.max(0, Math.min(actualCanvasSize - 1, newY));
+        
+        const snappedX = Math.round(constrainedX);
+        const snappedY = Math.round(constrainedY);
+        
+        setUploadedImage({ ...uploadedImage, position: { x: snappedX, y: snappedY } });
+      }
+      return;
+    }
+    
+    // Handle silhouette dragging on touch
+    if (isDraggingSilhouette) {
+      const touch = e.touches[0];
+      const canvas = canvasRef.current;
+      if (canvas) {
+        const rect = canvas.getBoundingClientRect();
+        const x = touch.clientX - rect.left;
+        const y = touch.clientY - rect.top;
+        
+        const pixelSize = getPixelSize(zoom);
+        const newX = (x - dragOffset.x) / pixelSize;
+        const newY = (y - dragOffset.y) / pixelSize;
+        
+        const silhouetteSize = Math.floor(actualCanvasSize / 2);
+        const constrainedX = Math.max(0, Math.min(actualCanvasSize - silhouetteSize, newX));
+        const constrainedY = Math.max(0, Math.min(actualCanvasSize - silhouetteSize, newY));
+        
+        const snappedX = Math.round(constrainedX);
+        const snappedY = Math.round(constrainedY);
+        
+        setSilhouettePosition({ x: snappedX, y: snappedY });
+      }
+      return;
+    }
     
     if (e.touches.length === 2 && touchDistance && touchCenter && !isPanning) {
       // Two finger touch - handle zoom only (when not panning)
@@ -1021,6 +1120,19 @@ export function Canvas({ eventId, canvasSize = 300 }: CanvasProps) {
 
   const handleTouchEnd = (e: React.TouchEvent) => {
     e.preventDefault();
+    
+    // Stop image dragging
+    if (isDraggingImage && uploadedImage) {
+      setUploadedImage({ ...uploadedImage, isDragging: false });
+      setIsDraggingImage(false);
+      setDragOffset({ x: 0, y: 0 });
+    }
+    
+    // Stop silhouette dragging
+    if (isDraggingSilhouette) {
+      setIsDraggingSilhouette(false);
+      setDragOffset({ x: 0, y: 0 });
+    }
     
     if (e.touches.length === 0) {
       // Handle touch click (pixel selection) if no movement occurred
@@ -1366,7 +1478,10 @@ export function Canvas({ eventId, canvasSize = 300 }: CanvasProps) {
                 width: '320px', 
                 height: '320px', 
                 overflow: 'hidden',
-                position: 'relative'
+                position: 'relative',
+                willChange: 'transform',
+                backfaceVisibility: 'hidden',
+                WebkitBackfaceVisibility: 'hidden'
               }}
             >
               <canvas
@@ -1387,8 +1502,11 @@ export function Canvas({ eventId, canvasSize = 300 }: CanvasProps) {
                   left: 0,
                   touchAction: 'none',
                   userSelect: 'none',
-                  transform: `translate(${pan.x}px, ${pan.y}px)`,
-                  transition: 'none'
+                  transform: `translate3d(${pan.x}px, ${pan.y}px, 0)`,
+                  transition: 'none',
+                  willChange: 'transform',
+                  backfaceVisibility: 'hidden',
+                  WebkitBackfaceVisibility: 'hidden'
                 }}
               />
             </div>
@@ -1443,20 +1561,7 @@ export function Canvas({ eventId, canvasSize = 300 }: CanvasProps) {
             </div>
           )}
 
-          {/* Instructions */}
-          <div className="text-xs sm:text-sm text-foreground-muted text-center">
-            Use mouse wheel to zoom in/out. Click on any pixel to select it. 
-            {uploadedImage && (
-              <span className="block mt-1">
-                Drag uploaded image to reposition it. Image automatically snaps to pixel grid.
-              </span>
-            )}
-            {showSilhouette && silhouetteOverlay.length > 0 && (
-              <span className="block mt-1">
-                Drag silhouette overlay to reposition it. Silhouette automatically snaps to pixel grid. Use &quot;Lock Silhouette&quot; to prevent movement.
-              </span>
-            )}
-          </div>
+
         </div>
       </Card>
     </div>
