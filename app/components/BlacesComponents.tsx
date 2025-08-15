@@ -64,7 +64,6 @@ export function BlacesHome() {
 export function CreateEvent() {
   const [eventName, setEventName] = useState("");
   const [eventDescription, setEventDescription] = useState("");
-  const [canvasSize, setCanvasSize] = useState(40);
   const [eventCode, setEventCode] = useState("");
   const [showQR, setShowQR] = useState(false);
   const [qrCodeDataUrl, setQrCodeDataUrl] = useState("");
@@ -75,11 +74,11 @@ export function CreateEvent() {
     const code = generateEventCode();
     setEventCode(code);
     
-    // Save event metadata including canvas size
+    // Save event metadata with fixed canvas size
     const eventMetadata = {
       name: eventName,
       description: eventDescription,
-      canvasSize: canvasSize,
+      canvasSize: 200, // Fixed canvas size
       createdAt: new Date().toISOString()
     };
     localStorage.setItem(`blaces-event-${code}`, JSON.stringify(eventMetadata));
@@ -141,17 +140,9 @@ export function CreateEvent() {
               <label className="block text-sm font-medium text-foreground mb-2">
                 Canvas Size
               </label>
-              <select
-                value={canvasSize}
-                onChange={(e) => setCanvasSize(Number(e.target.value))}
-                className="w-full px-3 py-2 bg-card-bg border border-card-border rounded-lg text-foreground focus:outline-none focus:ring-1 focus:ring-accent text-base"
-              >
-                <option value={200}>200x200 (Small)</option>
-                <option value={250}>250x250 (Medium)</option>
-                <option value={300}>300x300 (Large)</option>
-                <option value={350}>350x350 (Extra Large)</option>
-                <option value={400}>400x400 (Huge)</option>
-              </select>
+              <div className="w-full px-3 py-2 bg-card-bg border border-card-border rounded-lg text-foreground text-base">
+                200x200 (Fixed Size)
+              </div>
             </div>
             
             <div className="flex space-x-3">
@@ -330,10 +321,10 @@ export function JoinEvent() {
 
 type CanvasProps = {
   eventId: string;
-  canvasSize?: number; // Default 300 if not provided
 };
 
-export function Canvas({ eventId, canvasSize = 300 }: CanvasProps) {
+export function Canvas({ eventId }: CanvasProps) {
+  const CANVAS_SIZE = 200; // Fixed canvas size
   const [selectedColor, setSelectedColor] = useState(COLORS[0]);
   const [pixels, setPixels] = useState<string[][]>([]);
   const [silhouetteOverlay, setSilhouetteOverlay] = useState<string[][]>([]);
@@ -352,25 +343,18 @@ export function Canvas({ eventId, canvasSize = 300 }: CanvasProps) {
   const [mouseDownPoint, setMouseDownPoint] = useState({ x: 0, y: 0 });
   const [hasMoved, setHasMoved] = useState(false);
   const [cursorPosition, setCursorPosition] = useState<{row: number, col: number} | null>(null);
-  const [actualCanvasSize, setActualCanvasSize] = useState(canvasSize);
   const [touchDistance, setTouchDistance] = useState<number | null>(null);
   const [touchCenter, setTouchCenter] = useState<{x: number, y: number} | null>(null);
   
-  // State for single uploaded image
-  const [uploadedImage, setUploadedImage] = useState<{
-    pixelData: string[][];
-    position: { x: number; y: number };
-    size: { width: number; height: number };
-    isDragging: boolean;
-  } | null>(null);
-  const [isDraggingImage, setIsDraggingImage] = useState(false);
+  // Drag offset for silhouette dragging
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
   
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const lastDrawnPixels = useRef<Map<string, string>>(new Map()); // Track last drawn pixel colors
 
   // Viewport and pixel size helpers to guarantee full canvas visible at zoom = 1
   const VIEWPORT_SIZE = 320;
-  const getMinPixelSize = useCallback(() => VIEWPORT_SIZE / actualCanvasSize, [actualCanvasSize]);
+  const getMinPixelSize = useCallback(() => VIEWPORT_SIZE / CANVAS_SIZE, []);
   const getMaxPixelSize = useCallback(() => VIEWPORT_SIZE / 5, []);
   const getPixelSize = useCallback((z: number) => {
     const min = getMinPixelSize();
@@ -380,34 +364,20 @@ export function Canvas({ eventId, canvasSize = 300 }: CanvasProps) {
   }, [getMinPixelSize, getMaxPixelSize]);
   const getMaxZoom = useCallback(() => getMaxPixelSize() / getMinPixelSize(), [getMaxPixelSize, getMinPixelSize]);
 
-  // Initialize canvas with dynamic size
+  // Initialize canvas with fixed size
   useEffect(() => {
-    // Try to get event metadata to determine canvas size
-    const eventMetadata = localStorage.getItem(`blaces-event-${eventId}`);
-    let eventCanvasSize = canvasSize;
-    
-    if (eventMetadata) {
-      try {
-        const metadata = JSON.parse(eventMetadata);
-        eventCanvasSize = metadata.canvasSize || canvasSize;
-      } catch (error) {
-        console.error('Error parsing event metadata:', error);
-      }
-    }
-    
-    setActualCanvasSize(eventCanvasSize);
-    console.log(`Canvas size for event ${eventId}: ${eventCanvasSize}x${eventCanvasSize}`);
+    console.log(`Canvas size for event ${eventId}: ${CANVAS_SIZE}x${CANVAS_SIZE}`);
     
     const savedPixels = localStorage.getItem(`blaces-${eventId}`);
     if (savedPixels) {
       setPixels(JSON.parse(savedPixels));
     } else {
       // Initialize empty canvas
-      const emptyCanvas = Array(eventCanvasSize).fill(null).map(() => Array(eventCanvasSize).fill('#FFFFFF'));
+      const emptyCanvas = Array(CANVAS_SIZE).fill(null).map(() => Array(CANVAS_SIZE).fill('#FFFFFF'));
       setPixels(emptyCanvas);
     }
     setIsLoading(false);
-  }, [eventId, canvasSize]);
+  }, [eventId]);
 
   // Save pixels to localStorage with debouncing
   useEffect(() => {
@@ -420,7 +390,20 @@ export function Canvas({ eventId, canvasSize = 300 }: CanvasProps) {
     }
   }, [pixels, eventId]);
 
-  // Draw canvas whenever pixels, zoom, pan, or selectedPixel changes
+  // Optimized pixel drawing - only draw changed pixels
+  const drawPixel = useCallback((row: number, col: number, color: string, ctx: CanvasRenderingContext2D, pixelSize: number) => {
+    const pixelKey = `${row}-${col}`;
+    const lastColor = lastDrawnPixels.current.get(pixelKey);
+    
+    // Only draw if color changed or pixel not drawn before
+    if (lastColor !== color) {
+      ctx.fillStyle = color;
+      ctx.fillRect(col * pixelSize, row * pixelSize, pixelSize, pixelSize);
+      lastDrawnPixels.current.set(pixelKey, color);
+    }
+  }, []);
+
+  // Draw canvas with optimized rendering
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas || pixels.length === 0) return;
@@ -429,72 +412,61 @@ export function Canvas({ eventId, canvasSize = 300 }: CanvasProps) {
     if (!ctx) return;
 
     const pixelSize = getPixelSize(zoom);
-    const canvasWidth = actualCanvasSize * pixelSize;
-    const canvasHeight = actualCanvasSize * pixelSize;
+    const canvasWidth = CANVAS_SIZE * pixelSize;
+    const canvasHeight = CANVAS_SIZE * pixelSize;
 
     // Set canvas size
     canvas.width = canvasWidth;
     canvas.height = canvasHeight;
 
-    // Clear canvas
-    ctx.clearRect(0, 0, canvasWidth, canvasHeight);
+    // Clear canvas and reset last drawn pixels on zoom/pan change
+    if (zoom !== 1 || pan.x !== 0 || pan.y !== 0) {
+      ctx.clearRect(0, 0, canvasWidth, canvasHeight);
+      lastDrawnPixels.current.clear();
+    }
 
-    // No need to apply pan transformation in canvas context since we're using CSS transform
     ctx.save();
 
-    // Optimized pixel drawing with batch operations
-    const drawPixels = () => {
-      // Group pixels by color for batch drawing
-      const colorGroups = new Map<string, Array<{x: number, y: number}>>();
-      
-      pixels.forEach((row, rowIndex) => {
+    // Draw only changed pixels
+    pixels.forEach((row, rowIndex) => {
+      if (row && Array.isArray(row)) {
         row.forEach((color, colIndex) => {
-          if (!colorGroups.has(color)) {
-            colorGroups.set(color, []);
+          if (color) {
+            drawPixel(rowIndex, colIndex, color, ctx, pixelSize);
           }
-          colorGroups.get(color)!.push({
-            x: colIndex * pixelSize,
-            y: rowIndex * pixelSize
-          });
         });
-      });
-      
-      // Draw each color group in batches
-      colorGroups.forEach((positions, color) => {
-        ctx.fillStyle = color;
-        positions.forEach(pos => {
-          ctx.fillRect(pos.x, pos.y, pixelSize, pixelSize);
-        });
-      });
-    };
-    
-    drawPixels();
+      }
+    });
     
     // Draw feedback and borders separately for better performance
     if (showMatchingFeedback && silhouetteOverlay.length > 0) {
       pixels.forEach((row, rowIndex) => {
-        row.forEach((color, colIndex) => {
-          const isCorrect = isPixelCorrect(rowIndex, colIndex);
-          if (isCorrect) {
-            ctx.strokeStyle = '#10B981';
-            ctx.lineWidth = 2;
-            ctx.strokeRect(
-              colIndex * pixelSize,
-              rowIndex * pixelSize,
-              pixelSize,
-              pixelSize
-            );
-          } else if (color !== '#FFFFFF') {
-            ctx.strokeStyle = '#EF4444';
-            ctx.lineWidth = 2;
-            ctx.strokeRect(
-              colIndex * pixelSize,
-              rowIndex * pixelSize,
-              pixelSize,
-              pixelSize
-            );
-          }
-        });
+        if (row && Array.isArray(row)) {
+          row.forEach((color, colIndex) => {
+            if (color) {
+              const isCorrect = isPixelCorrect(rowIndex, colIndex);
+              if (isCorrect) {
+                ctx.strokeStyle = '#10B981';
+                ctx.lineWidth = 2;
+                ctx.strokeRect(
+                  colIndex * pixelSize,
+                  rowIndex * pixelSize,
+                  pixelSize,
+                  pixelSize
+                );
+              } else if (color !== '#FFFFFF') {
+                ctx.strokeStyle = '#EF4444';
+                ctx.lineWidth = 2;
+                ctx.strokeRect(
+                  colIndex * pixelSize,
+                  rowIndex * pixelSize,
+                  pixelSize,
+                  pixelSize
+                );
+              }
+            }
+          });
+        }
       });
     }
     
@@ -504,7 +476,7 @@ export function Canvas({ eventId, canvasSize = 300 }: CanvasProps) {
       ctx.lineWidth = 0.5;
       
       // Draw grid lines in batches
-      for (let i = 0; i <= actualCanvasSize; i++) {
+      for (let i = 0; i <= CANVAS_SIZE; i++) {
         const pos = i * pixelSize;
         // Vertical lines
         ctx.beginPath();
@@ -519,41 +491,12 @@ export function Canvas({ eventId, canvasSize = 300 }: CanvasProps) {
       }
     }
 
-    // Draw uploaded image
-    if (uploadedImage) {
-      const imgX = uploadedImage.position.x * pixelSize;
-      const imgY = uploadedImage.position.y * pixelSize;
-      const imgWidth = uploadedImage.size.width * pixelSize;
-      const imgHeight = uploadedImage.size.height * pixelSize;
-      
-      // Draw image border if dragging
-      if (uploadedImage.isDragging) {
-        ctx.strokeStyle = '#3B82F6';
-        ctx.lineWidth = 2;
-        ctx.strokeRect(imgX - 2, imgY - 2, imgWidth + 4, imgHeight + 4);
-      }
-      
-      // Draw image pixels
-      uploadedImage.pixelData.forEach((row: string[], rowIndex: number) => {
-        row.forEach((color: string, colIndex: number) => {
-          if (rowIndex < uploadedImage.size.height && colIndex < uploadedImage.size.width) {
-            const pixelX = imgX + colIndex * pixelSize;
-            const pixelY = imgY + rowIndex * pixelSize;
-            
-            // Only draw if pixel is within canvas bounds
-            if (pixelX >= 0 && pixelX < canvasWidth && pixelY >= 0 && pixelY < canvasHeight) {
-              ctx.fillStyle = color;
-              ctx.fillRect(pixelX, pixelY, pixelSize, pixelSize);
-            }
-          }
-        });
-      });
-    }
+
 
     // Draw silhouette overlay if enabled and available (for backward compatibility)
     if (showSilhouette && silhouetteOverlay.length > 0) {
-      // Calculate silhouette size (half of canvas)
-      const silhouetteSize = Math.floor(actualCanvasSize / 2);
+      // Fixed silhouette size (25x25)
+      const silhouetteSize = 25;
       const startX = silhouettePosition.x;
       const startY = silhouettePosition.y;
       
@@ -609,13 +552,13 @@ export function Canvas({ eventId, canvasSize = 300 }: CanvasProps) {
     }
 
     ctx.restore();
-  }, [pixels, zoom, pan, selectedPixel, actualCanvasSize, getPixelSize, uploadedImage, silhouettePosition, isDraggingSilhouette, isSilhouetteLocked]);
+  }, [pixels, zoom, pan, selectedPixel, CANVAS_SIZE, getPixelSize, silhouettePosition, isDraggingSilhouette, isSilhouetteLocked, drawPixel, showMatchingFeedback, showSilhouette, silhouetteOverlay]);
 
   // Adjust pan when zoom changes to keep canvas within bounds
   useEffect(() => {
     const pixelSize = getPixelSize(zoom);
-    const canvasWidth = actualCanvasSize * pixelSize;
-    const canvasHeight = actualCanvasSize * pixelSize;
+    const canvasWidth = CANVAS_SIZE * pixelSize;
+    const canvasHeight = CANVAS_SIZE * pixelSize;
     
     // If zoom is 1, center the canvas within the 320x320 viewport
     if (zoom === 1) {
@@ -643,7 +586,7 @@ export function Canvas({ eventId, canvasSize = 300 }: CanvasProps) {
     if (newPanX !== pan.x || newPanY !== pan.y) {
       setPan({ x: newPanX, y: newPanY });
     }
-  }, [zoom, pan.x, pan.y, actualCanvasSize, getPixelSize]);
+  }, [zoom, pan.x, pan.y, CANVAS_SIZE, getPixelSize]);
 
   // Mouse wheel zoom handler
   const handleWheel = (e: React.WheelEvent) => {
@@ -700,7 +643,7 @@ export function Canvas({ eventId, canvasSize = 300 }: CanvasProps) {
     const col = Math.floor(adjustedX / pixelSize);
     const row = Math.floor(adjustedY / pixelSize);
 
-    if (row >= 0 && row < actualCanvasSize && col >= 0 && col < actualCanvasSize) {
+    if (row >= 0 && row < CANVAS_SIZE && col >= 0 && col < CANVAS_SIZE) {
       // Always select pixel regardless of zoom level
       setSelectedPixel({ row, col });
       setShowPixelSelector(true);
@@ -722,32 +665,12 @@ export function Canvas({ eventId, canvasSize = 300 }: CanvasProps) {
       const adjustedX = x;
       const adjustedY = y;
 
-      // Check if clicking on uploaded image
-      if (uploadedImage) {
-        const pixelSize = getPixelSize(zoom);
-        const imgX = uploadedImage.position.x * pixelSize;
-        const imgY = uploadedImage.position.y * pixelSize;
-        const imgWidth = uploadedImage.size.width * pixelSize;
-        const imgHeight = uploadedImage.size.height * pixelSize;
-        
-        if (adjustedX >= imgX && adjustedX <= imgX + imgWidth &&
-            adjustedY >= imgY && adjustedY <= imgY + imgHeight) {
-          // Start dragging the image
-          setIsDraggingImage(true);
-          setDragOffset({
-            x: adjustedX - uploadedImage.position.x * pixelSize,
-            y: adjustedY - uploadedImage.position.y * pixelSize
-          });
-          
-          setUploadedImage({ ...uploadedImage, isDragging: true });
-          return;
-        }
-      }
+
 
       // Check if clicking on silhouette overlay
       if (showSilhouette && silhouetteOverlay.length > 0 && !isSilhouetteLocked) {
         const pixelSize = getPixelSize(zoom);
-        const silhouetteSize = Math.floor(actualCanvasSize / 2);
+        const silhouetteSize = 25; // Fixed 25x25 size
         const silhouetteX = silhouettePosition.x * pixelSize;
         const silhouetteY = silhouettePosition.y * pixelSize;
         const silhouetteWidth = silhouetteSize * pixelSize;
@@ -784,23 +707,7 @@ export function Canvas({ eventId, canvasSize = 300 }: CanvasProps) {
     const adjustedX = x;
     const adjustedY = y;
 
-    // Handle image dragging
-    if (isDraggingImage && uploadedImage) {
-      const pixelSize = getPixelSize(zoom);
-      const newX = (adjustedX - dragOffset.x) / pixelSize;
-      const newY = (adjustedY - dragOffset.y) / pixelSize;
-      
-      // Constrain image to canvas bounds
-      const constrainedX = Math.max(0, Math.min(actualCanvasSize - 1, newX));
-      const constrainedY = Math.max(0, Math.min(actualCanvasSize - 1, newY));
-      
-      // Snap to pixel grid
-      const snappedX = Math.round(constrainedX);
-      const snappedY = Math.round(constrainedY);
-      
-      setUploadedImage({ ...uploadedImage, position: { x: snappedX, y: snappedY } });
-      return;
-    }
+
 
     // Handle silhouette dragging
     if (isDraggingSilhouette) {
@@ -809,9 +716,9 @@ export function Canvas({ eventId, canvasSize = 300 }: CanvasProps) {
       const newY = (adjustedY - dragOffset.y) / pixelSize;
       
       // Constrain silhouette to canvas bounds
-      const silhouetteSize = Math.floor(actualCanvasSize / 2);
-      const constrainedX = Math.max(0, Math.min(actualCanvasSize - silhouetteSize, newX));
-      const constrainedY = Math.max(0, Math.min(actualCanvasSize - silhouetteSize, newY));
+      const silhouetteSize = 25; // Fixed 25x25 size
+      const constrainedX = Math.max(0, Math.min(CANVAS_SIZE - silhouetteSize, newX));
+      const constrainedY = Math.max(0, Math.min(CANVAS_SIZE - silhouetteSize, newY));
       
       // Snap to pixel grid while dragging
       const snappedX = Math.round(constrainedX);
@@ -830,7 +737,7 @@ export function Canvas({ eventId, canvasSize = 300 }: CanvasProps) {
       const row = Math.floor(adjustedY / pixelSize);
 
       // Only update cursor position if it's within canvas bounds
-      if (row >= 0 && row < actualCanvasSize && col >= 0 && col < actualCanvasSize) {
+      if (row >= 0 && row < CANVAS_SIZE && col >= 0 && col < CANVAS_SIZE) {
         setCursorPosition({ row, col });
       } else {
         setCursorPosition(null);
@@ -856,8 +763,8 @@ export function Canvas({ eventId, canvasSize = 300 }: CanvasProps) {
         
         // Calculate canvas dimensions
         const pixelSize = getPixelSize(zoom);
-        const canvasWidth = actualCanvasSize * pixelSize;
-        const canvasHeight = actualCanvasSize * pixelSize;
+        const canvasWidth = CANVAS_SIZE * pixelSize;
+        const canvasHeight = CANVAS_SIZE * pixelSize;
         const viewportWidth = 320;
         const viewportHeight = 320;
         
@@ -877,15 +784,8 @@ export function Canvas({ eventId, canvasSize = 300 }: CanvasProps) {
     }
   };
 
-  // Handle mouse up to stop panning and image dragging
+  // Handle mouse up to stop panning and silhouette dragging
   const handleMouseUp = () => {
-    // Stop image dragging
-    if (isDraggingImage && uploadedImage) {
-      setUploadedImage({ ...uploadedImage, isDragging: false });
-      setIsDraggingImage(false);
-      setDragOffset({ x: 0, y: 0 });
-    }
-    
     // Stop silhouette dragging and snap to pixel grid
     if (isDraggingSilhouette) {
       // Snap silhouette to pixel grid - align top-left corner to pixel boundary
@@ -942,29 +842,12 @@ export function Canvas({ eventId, canvasSize = 300 }: CanvasProps) {
         const x = touch.clientX - rect.left;
         const y = touch.clientY - rect.top;
         
-        // Check for image touch
-        if (uploadedImage) {
-          const pixelSize = getPixelSize(zoom);
-          const imgX = uploadedImage.position.x * pixelSize;
-          const imgY = uploadedImage.position.y * pixelSize;
-          const imgWidth = uploadedImage.size.width * pixelSize;
-          const imgHeight = uploadedImage.size.height * pixelSize;
-          
-          if (x >= imgX && x <= imgX + imgWidth && y >= imgY && y <= imgY + imgHeight) {
-            setIsDraggingImage(true);
-            setDragOffset({
-              x: x - uploadedImage.position.x * pixelSize,
-              y: y - uploadedImage.position.y * pixelSize
-            });
-            setUploadedImage({ ...uploadedImage, isDragging: true });
-            return;
-          }
-        }
+
         
         // Check for silhouette touch
         if (showSilhouette && silhouetteOverlay.length > 0 && !isSilhouetteLocked) {
           const pixelSize = getPixelSize(zoom);
-          const silhouetteSize = Math.floor(actualCanvasSize / 2);
+          const silhouetteSize = 25; // Fixed 25x25 size
           const silhouetteX = silhouettePosition.x * pixelSize;
           const silhouetteY = silhouettePosition.y * pixelSize;
           const silhouetteWidth = silhouetteSize * pixelSize;
@@ -995,29 +878,7 @@ export function Canvas({ eventId, canvasSize = 300 }: CanvasProps) {
   const handleTouchMove = (e: React.TouchEvent) => {
     e.preventDefault();
     
-    // Handle image dragging on touch
-    if (isDraggingImage && uploadedImage) {
-      const touch = e.touches[0];
-      const canvas = canvasRef.current;
-      if (canvas) {
-        const rect = canvas.getBoundingClientRect();
-        const x = touch.clientX - rect.left;
-        const y = touch.clientY - rect.top;
-        
-        const pixelSize = getPixelSize(zoom);
-        const newX = (x - dragOffset.x) / pixelSize;
-        const newY = (y - dragOffset.y) / pixelSize;
-        
-        const constrainedX = Math.max(0, Math.min(actualCanvasSize - 1, newX));
-        const constrainedY = Math.max(0, Math.min(actualCanvasSize - 1, newY));
-        
-        const snappedX = Math.round(constrainedX);
-        const snappedY = Math.round(constrainedY);
-        
-        setUploadedImage({ ...uploadedImage, position: { x: snappedX, y: snappedY } });
-      }
-      return;
-    }
+
     
     // Handle silhouette dragging on touch
     if (isDraggingSilhouette) {
@@ -1032,9 +893,9 @@ export function Canvas({ eventId, canvasSize = 300 }: CanvasProps) {
         const newX = (x - dragOffset.x) / pixelSize;
         const newY = (y - dragOffset.y) / pixelSize;
         
-        const silhouetteSize = Math.floor(actualCanvasSize / 2);
-        const constrainedX = Math.max(0, Math.min(actualCanvasSize - silhouetteSize, newX));
-        const constrainedY = Math.max(0, Math.min(actualCanvasSize - silhouetteSize, newY));
+        const silhouetteSize = 25; // Fixed 25x25 size
+        const constrainedX = Math.max(0, Math.min(CANVAS_SIZE - silhouetteSize, newX));
+        const constrainedY = Math.max(0, Math.min(CANVAS_SIZE - silhouetteSize, newY));
         
         const snappedX = Math.round(constrainedX);
         const snappedY = Math.round(constrainedY);
@@ -1097,8 +958,8 @@ export function Canvas({ eventId, canvasSize = 300 }: CanvasProps) {
         const newY = prevPan.y + deltaY;
         
         const pixelSize = getPixelSize(zoom);
-        const canvasWidth = actualCanvasSize * pixelSize;
-        const canvasHeight = actualCanvasSize * pixelSize;
+        const canvasWidth = CANVAS_SIZE * pixelSize;
+        const canvasHeight = CANVAS_SIZE * pixelSize;
         const viewportWidth = 320;
         const viewportHeight = 320;
         
@@ -1121,12 +982,7 @@ export function Canvas({ eventId, canvasSize = 300 }: CanvasProps) {
   const handleTouchEnd = (e: React.TouchEvent) => {
     e.preventDefault();
     
-    // Stop image dragging
-    if (isDraggingImage && uploadedImage) {
-      setUploadedImage({ ...uploadedImage, isDragging: false });
-      setIsDraggingImage(false);
-      setDragOffset({ x: 0, y: 0 });
-    }
+
     
     // Stop silhouette dragging
     if (isDraggingSilhouette) {
@@ -1154,7 +1010,7 @@ export function Canvas({ eventId, canvasSize = 300 }: CanvasProps) {
           const col = Math.floor(adjustedX / pixelSize);
           const row = Math.floor(adjustedY / pixelSize);
 
-          if (row >= 0 && row < actualCanvasSize && col >= 0 && col < actualCanvasSize) {
+          if (row >= 0 && row < CANVAS_SIZE && col >= 0 && col < CANVAS_SIZE) {
             setSelectedPixel({ row, col });
             setShowPixelSelector(true);
           }
@@ -1168,12 +1024,37 @@ export function Canvas({ eventId, canvasSize = 300 }: CanvasProps) {
     }
   };
 
+  // Optimized pixel placement - only update the specific pixel
   const handlePlacePixel = () => {
-    if (selectedPixel) {
-      const newPixels = pixels.map((r, i) =>
-        i === selectedPixel.row ? r.map((p, j) => j === selectedPixel.col ? selectedColor : p) : r
-      );
-      setPixels(newPixels);
+    if (selectedPixel && pixels.length > 0) {
+      const { row, col } = selectedPixel;
+      
+      // Safety check for array bounds
+      if (row >= 0 && row < pixels.length && col >= 0 && col < pixels[row]?.length) {
+        // Only update if color actually changed
+        if (pixels[row][col] !== selectedColor) {
+          // Create new array with only the changed pixel
+          const newPixels = [...pixels];
+          newPixels[row] = [...newPixels[row]];
+          newPixels[row][col] = selectedColor;
+          
+          setPixels(newPixels);
+          
+          // Immediately draw the new pixel to canvas
+          const canvas = canvasRef.current;
+          if (canvas) {
+            const ctx = canvas.getContext('2d');
+            if (ctx) {
+              const pixelSize = getPixelSize(zoom);
+              ctx.fillStyle = selectedColor;
+              ctx.fillRect(col * pixelSize, row * pixelSize, pixelSize, pixelSize);
+              // Update the last drawn pixel tracking
+              lastDrawnPixels.current.set(`${row}-${col}`, selectedColor);
+            }
+          }
+        }
+      }
+      
       setSelectedPixel(null);
       setShowPixelSelector(false);
     }
@@ -1184,8 +1065,8 @@ export function Canvas({ eventId, canvasSize = 300 }: CanvasProps) {
     
     // Center the canvas when zooming out completely
     const pixelSize = getPixelSize(1); // zoom = 1 -> fit viewport
-    const canvasWidth = actualCanvasSize * pixelSize;
-    const canvasHeight = actualCanvasSize * pixelSize;
+    const canvasWidth = CANVAS_SIZE * pixelSize;
+    const canvasHeight = CANVAS_SIZE * pixelSize;
     const viewportWidth = 320;
     const viewportHeight = 320;
     
@@ -1198,41 +1079,37 @@ export function Canvas({ eventId, canvasSize = 300 }: CanvasProps) {
     setShowPixelSelector(false);
   };
 
-  // Handle file selection for 16bit image upload
+  // Handle file selection for silhouette overlay
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
     if (!file.type.startsWith('image/')) {
       alert('Please select an image file');
+      // Reset file input for invalid file type
+      e.target.value = '';
       return;
     }
 
     try {
-      const pixelData = await processImageToPixels(file, actualCanvasSize);
+      const pixelData = await processImageToPixels(file, 25); // Fixed 25x25 size
       
-      const imageSize = Math.floor(actualCanvasSize / 2); // Half size for uploaded images
-      
-      const newImage = {
-        pixelData: pixelData,
-        position: { x: 50, y: 50 }, // Default position
-        size: { width: imageSize, height: imageSize },
-        isDragging: false
-      };
-      
-      setUploadedImage(newImage);
-      
-      // Also set as silhouette overlay for backward compatibility
+      // Set as silhouette overlay only
       setSilhouetteOverlay(pixelData);
       setShowSilhouette(true);
+      
+      // Reset file input to allow re-uploading the same file
+      e.target.value = '';
     } catch (error) {
       console.error('Error processing image:', error);
       alert('Error processing image. Please try again.');
+      // Reset file input on error
+      e.target.value = '';
     }
   };
 
   // Process image to pixel data with 8-bit quantization
-  const processImageToPixels = (file: File, canvasSize: number): Promise<string[][]> => {
+  const processImageToPixels = (file: File, imageSize: number): Promise<string[][]> => {
     return new Promise((resolve, reject) => {
       const img = new Image();
       const canvas = document.createElement('canvas');
@@ -1245,16 +1122,15 @@ export function Canvas({ eventId, canvasSize = 300 }: CanvasProps) {
 
       img.onload = () => {
         try {
-          // Set canvas size (half size for silhouette)
-          const silhouetteSize = Math.floor(canvasSize / 2);
-          canvas.width = silhouetteSize;
-          canvas.height = silhouetteSize;
+          // Set canvas size to fixed image size (25x25)
+          canvas.width = imageSize;
+          canvas.height = imageSize;
 
-          // Draw and scale image to half size
-          ctx.drawImage(img, 0, 0, silhouetteSize, silhouetteSize);
+          // Draw and scale image to fixed size
+          ctx.drawImage(img, 0, 0, imageSize, imageSize);
 
           // Get pixel data
-          const imageData = ctx.getImageData(0, 0, silhouetteSize, silhouetteSize);
+          const imageData = ctx.getImageData(0, 0, imageSize, imageSize);
           const data = imageData.data;
 
           // r/place color palette
@@ -1266,10 +1142,10 @@ export function Canvas({ eventId, canvasSize = 300 }: CanvasProps) {
 
           // Convert to pixel data with 8-bit quantization
           const pixelData: string[][] = [];
-          for (let y = 0; y < silhouetteSize; y++) {
+          for (let y = 0; y < imageSize; y++) {
             const row: string[] = [];
-            for (let x = 0; x < silhouetteSize; x++) {
-              const index = (y * silhouetteSize + x) * 4;
+            for (let x = 0; x < imageSize; x++) {
+              const index = (y * imageSize + x) * 4;
               const r = data[index];
               const g = data[index + 1];
               const b = data[index + 2];
@@ -1335,7 +1211,15 @@ export function Canvas({ eventId, canvasSize = 300 }: CanvasProps) {
     setSilhouetteOverlay([]);
     setShowSilhouette(false);
     setShowMatchingFeedback(false);
+    
+    // Reset file input to allow re-uploading the same file
+    const fileInput = document.getElementById('image-upload') as HTMLInputElement;
+    if (fileInput) {
+      fileInput.value = '';
+    }
   };
+
+
 
 
 
@@ -1350,7 +1234,12 @@ export function Canvas({ eventId, canvasSize = 300 }: CanvasProps) {
 
   // Check if a pixel matches the target silhouette
   const isPixelCorrect = (row: number, col: number): boolean => {
-    if (!silhouetteOverlay.length || row >= silhouetteOverlay.length || col >= silhouetteOverlay[0].length) {
+    if (!silhouetteOverlay.length || row >= silhouetteOverlay.length || col >= silhouetteOverlay[0]?.length) {
+      return false;
+    }
+    
+    // Safety check for pixels array
+    if (!pixels.length || row >= pixels.length || col >= pixels[row]?.length) {
       return false;
     }
     
@@ -1394,7 +1283,7 @@ export function Canvas({ eventId, canvasSize = 300 }: CanvasProps) {
 
   return (
     <div className="space-y-4 animate-fade-in">
-      <Card title={`Blaces Canvas - ${eventId} (${actualCanvasSize}x${actualCanvasSize})`}>
+      <Card title={`Blaces Canvas - ${eventId} (${CANVAS_SIZE}x${CANVAS_SIZE})`}>
         <div className="space-y-4">
           {/* Zoom Controls */}
           <div className="flex justify-center items-center space-x-2">
@@ -1522,7 +1411,7 @@ export function Canvas({ eventId, canvasSize = 300 }: CanvasProps) {
                 Cursor Position: {cursorPosition ? `(${cursorPosition.row + 1}, ${cursorPosition.col + 1})` : '(0, 0)'}
               </div>
               <div className="text-xs text-foreground-muted">
-                Current Color: {pixels[selectedPixel.row][selectedPixel.col]}
+                Current Color: {pixels.length > 0 && selectedPixel.row < pixels.length && selectedPixel.col < pixels[selectedPixel.row]?.length ? pixels[selectedPixel.row][selectedPixel.col] : 'N/A'}
               </div>
             </div>
           )}

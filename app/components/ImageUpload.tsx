@@ -6,10 +6,10 @@ import { Icon } from "./DemoComponents";
 
 interface ImageUploadProps {
   onImageUpload: (pixelData: string[][]) => void;
-  canvasSize: number;
 }
 
-export function ImageUpload({ onImageUpload, canvasSize }: ImageUploadProps) {
+export function ImageUpload({ onImageUpload }: ImageUploadProps) {
+  const CANVAS_SIZE = 200; // Fixed canvas size
   const [isDragOver, setIsDragOver] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
@@ -42,31 +42,31 @@ export function ImageUpload({ onImageUpload, canvasSize }: ImageUploadProps) {
           }
 
           // Set canvas size to target pixel dimensions
-          canvas.width = canvasSize;
-          canvas.height = canvasSize;
+          canvas.width = CANVAS_SIZE;
+          canvas.height = CANVAS_SIZE;
 
           // Draw image and scale it to fit canvas
-          ctx.drawImage(img, 0, 0, canvasSize, canvasSize);
+          ctx.drawImage(img, 0, 0, CANVAS_SIZE, CANVAS_SIZE);
 
           // Apply pixelation effect if pixelSize > 1
           if (pixelSize > 1) {
             const tempCanvas = document.createElement('canvas');
             const tempCtx = tempCanvas.getContext('2d');
             if (tempCtx) {
-              tempCanvas.width = canvasSize;
-              tempCanvas.height = canvasSize;
+              tempCanvas.width = CANVAS_SIZE;
+              tempCanvas.height = CANVAS_SIZE;
               
               // Draw at smaller size and scale up for pixelation
-              const smallSize = Math.floor(canvasSize / pixelSize);
+              const smallSize = Math.floor(CANVAS_SIZE / pixelSize);
               tempCtx.drawImage(canvas, 0, 0, smallSize, smallSize);
-              ctx.clearRect(0, 0, canvasSize, canvasSize);
+              ctx.clearRect(0, 0, CANVAS_SIZE, CANVAS_SIZE);
               ctx.imageSmoothingEnabled = false;
-              ctx.drawImage(tempCanvas, 0, 0, canvasSize, canvasSize);
+              ctx.drawImage(tempCanvas, 0, 0, CANVAS_SIZE, CANVAS_SIZE);
             }
           }
 
           // Get pixel data
-          const imageData = ctx.getImageData(0, 0, canvasSize, canvasSize);
+          const imageData = ctx.getImageData(0, 0, CANVAS_SIZE, CANVAS_SIZE);
           const data = imageData.data;
 
           // 8-bit color quantization (256 colors)
@@ -79,10 +79,10 @@ export function ImageUpload({ onImageUpload, canvasSize }: ImageUploadProps) {
 
           // Convert to 2D array of hex colors with 8-bit quantization
           const pixelData: string[][] = [];
-          for (let y = 0; y < canvasSize; y++) {
+          for (let y = 0; y < CANVAS_SIZE; y++) {
             const row: string[] = [];
-            for (let x = 0; x < canvasSize; x++) {
-              const index = (y * canvasSize + x) * 4;
+            for (let x = 0; x < CANVAS_SIZE; x++) {
+              const index = (y * CANVAS_SIZE + x) * 4;
               const r = data[index];
               const g = data[index + 1];
               const b = data[index + 2];
@@ -130,7 +130,7 @@ export function ImageUpload({ onImageUpload, canvasSize }: ImageUploadProps) {
       img.onerror = () => reject(new Error('Failed to load image'));
       img.src = URL.createObjectURL(file);
     });
-  }, [canvasSize, pixelSize]);
+  }, [CANVAS_SIZE, pixelSize]);
 
   // Helper function to find nearest color from r/place palette
   const findNearestColor = (r: number, g: number, b: number, palette: string[]): string => {
@@ -175,7 +175,7 @@ export function ImageUpload({ onImageUpload, canvasSize }: ImageUploadProps) {
     } finally {
       setIsProcessing(false);
     }
-  }, [processImage, onImageUpload, canvasSize]);
+  }, [processImage, onImageUpload]);
 
   // Handle drag and drop events
   const handleDragOver = useCallback((e: React.DragEvent) => {
@@ -238,7 +238,7 @@ export function ImageUpload({ onImageUpload, canvasSize }: ImageUploadProps) {
               Drag and drop an image here, or click to select
             </p>
             <p className="text-xs text-foreground-muted">
-              Image will be converted to {canvasSize}x{canvasSize} pixels
+              Image will be converted to {CANVAS_SIZE}x{CANVAS_SIZE} pixels
             </p>
           </div>
 
