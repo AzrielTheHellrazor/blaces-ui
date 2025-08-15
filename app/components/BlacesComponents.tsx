@@ -1232,18 +1232,34 @@ export function Canvas({ eventId }: CanvasProps) {
 
 
 
-  // Check if a pixel matches the target silhouette
+  // Check if a pixel matches the target silhouette at its current position
   const isPixelCorrect = (row: number, col: number): boolean => {
-    if (!silhouetteOverlay.length || row >= silhouetteOverlay.length || col >= silhouetteOverlay[0]?.length) {
+    if (!silhouetteOverlay.length || !pixels.length) {
       return false;
     }
     
-    // Safety check for pixels array
-    if (!pixels.length || row >= pixels.length || col >= pixels[row]?.length) {
+    // Calculate silhouette position offset
+    const silhouetteSize = 25; // Fixed 25x25 size
+    const startX = silhouettePosition.x;
+    const startY = silhouettePosition.y;
+    
+    // Calculate relative position within silhouette
+    const relativeRow = row - startY;
+    const relativeCol = col - startX;
+    
+    // Check if pixel is within silhouette bounds
+    if (relativeRow < 0 || relativeRow >= silhouetteSize || 
+        relativeCol < 0 || relativeCol >= silhouetteSize) {
       return false;
     }
     
-    const targetColor = silhouetteOverlay[row][col];
+    // Safety check for arrays
+    if (relativeRow >= silhouetteOverlay.length || relativeCol >= silhouetteOverlay[relativeRow]?.length ||
+        row >= pixels.length || col >= pixels[row]?.length) {
+      return false;
+    }
+    
+    const targetColor = silhouetteOverlay[relativeRow][relativeCol];
     const currentColor = pixels[row][col];
     
     // Simple color matching - can be enhanced with color similarity
