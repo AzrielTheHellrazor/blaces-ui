@@ -1615,7 +1615,7 @@ export function Canvas({ eventId }: CanvasProps) {
                 onTouchEnd={handleTouchEnd}
                 style={{
                   display: 'block',
-                  cursor: isPanning ? 'grabbing' : (isBrushMode ? 'url("data:image/svg+xml,%3csvg width=\'16\' height=\'16\' xmlns=\'http://www.w3.org/2000/svg\'%3e%3ccircle cx=\'8\' cy=\'8\' r=\'6\' fill=\'none\' stroke=\'%23000\' stroke-width=\'2\'/%3e%3ccircle cx=\'8\' cy=\'8\' r=\'2\' fill=\'%23000\'/%3e%3c/svg%3e") 8 8, crosshair' : 'crosshair'),
+                  cursor: isPanning ? 'grabbing' : (isBrushMode ? 'url("data:image/svg+xml,%3csvg width=\'12\' height=\'12\' xmlns=\'http://www.w3.org/2000/svg\'%3e%3cpath d=\'M2 10l2-2 6-6 1 1-6 6-2 2z\' fill=\'%23000\'/%3e%3c/svg%3e") 2 10, crosshair' : 'crosshair'),
                   position: 'absolute',
                   top: 0,
                   left: 0,
