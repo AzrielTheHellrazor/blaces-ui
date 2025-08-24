@@ -353,18 +353,18 @@ export function Canvas({ eventId, selectedColor = '#000000' }: CanvasProps) {
     return Math.min(window.innerWidth, window.innerHeight);
   }, []);
   
-  const getMinPixelSize = useCallback(() => getViewportSize() / CANVAS_SIZE, [getViewportSize]);
+  const getMinPixelSize = useCallback(() => getViewportSize() / (CANVAS_SIZE * 1.2), [getViewportSize]);
   const getMaxPixelSize = useCallback(() => getViewportSize() / 5, [getViewportSize]);
   const getPixelSize = useCallback((z: number) => {
     const viewportSize = getViewportSize();
-    const min = viewportSize / CANVAS_SIZE;
+    const min = viewportSize / (CANVAS_SIZE * 1.2);
     const max = viewportSize / 5;
     const desired = min * z;
     return Math.max(min, Math.min(max, desired));
   }, [getViewportSize]);
   const getMaxZoom = useCallback(() => {
     const viewportSize = getViewportSize();
-    const min = viewportSize / CANVAS_SIZE;
+    const min = viewportSize / (CANVAS_SIZE * 1.2);
     const max = viewportSize / 5;
     return max / min;
   }, [getViewportSize]);
