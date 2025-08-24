@@ -6,7 +6,7 @@ import { Button } from "./DemoComponents";
 import { Icon } from "./DemoComponents";
 import { Card } from "./DemoComponents";
 import QRCode from "qrcode";
-import { ImageUpload } from "./ImageUpload";
+
 
 // Utility function to generate random event code
 function generateEventCode(): string {
@@ -364,8 +364,7 @@ export function Canvas({ eventId, selectedColor = '#000000' }: CanvasProps) {
     return Math.min(window.innerWidth, window.innerHeight);
   }, []);
   
-  const getMinPixelSize = useCallback(() => getViewportSize() / (CANVAS_SIZE * 1.2), [getViewportSize]);
-  const getMaxPixelSize = useCallback(() => getViewportSize() / 5, [getViewportSize]);
+
   const getPixelSize = useCallback((z: number) => {
     const viewportSize = getViewportSize();
     const min = viewportSize / (CANVAS_SIZE * 1.2);
@@ -782,7 +781,7 @@ export function Canvas({ eventId, selectedColor = '#000000' }: CanvasProps) {
       }
       setLastSelectedColor(selectedColor);
     }
-  }, [selectedColor, isMobile, lastSelectedColor, getScreenCenterPixel]);
+  }, [selectedColor, isMobile, lastSelectedColor, getScreenCenterPixel, pixels]);
 
 
 
