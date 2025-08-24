@@ -6,7 +6,7 @@ import { Button } from "./DemoComponents";
 import { Icon } from "./DemoComponents";
 import { Card } from "./DemoComponents";
 import QRCode from "qrcode";
-// import { ImageUpload } from "./ImageUpload"; // Simplified upload system
+import { ImageUpload } from "./ImageUpload";
 
 // Utility function to generate random event code
 function generateEventCode(): string {
@@ -340,9 +340,20 @@ export function Canvas({ eventId, selectedColor = '#000000' }: CanvasProps) {
   const [mouseDownPoint, setMouseDownPoint] = useState({ x: 0, y: 0 });
   const [hasMoved, setHasMoved] = useState(false);
   const [touchDistance, setTouchDistance] = useState<number | null>(null);
+  const [silhouettePosition, setSilhouettePosition] = useState({ x: 90, y: 90 }); // Center position
+  const [isSilhouetteLocked, setIsSilhouetteLocked] = useState(false);
+  const [hasSilhouette, setHasSilhouette] = useState(false);
+  const [isDraggingSilhouette, setIsDraggingSilhouette] = useState(false);
+  const [dragStartPosition, setDragStartPosition] = useState({ x: 0, y: 0 });
+  const [selectedPixel, setSelectedPixel] = useState<{row: number, col: number} | null>(null);
+  const [isMobile, setIsMobile] = useState(false);
+  const [centerPixel, setCenterPixel] = useState({ row: 100, col: 100 }); // Will be calculated dynamically
+  const [blinkOpacity, setBlinkOpacity] = useState(1);
   
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const lastDrawnPixels = useRef<Map<string, string>>(new Map()); // Track last drawn pixel colors
+  const silhouetteDataRef = useRef<string[][] | null>(null); // Store silhouette data
 
 
 
@@ -369,6 +380,140 @@ export function Canvas({ eventId, selectedColor = '#000000' }: CanvasProps) {
     return max / min;
   }, [getViewportSize]);
 
+  // Calculate screen center pixel
+  const getScreenCenterPixel = useCallback(() => {
+    const viewportWidth = window.innerWidth;
+    const viewportHeight = window.innerHeight;
+    const pixelSize = getPixelSize(zoom);
+    
+    // Calculate canvas position on screen
+    const canvasLeft = (viewportWidth - CANVAS_SIZE * pixelSize) / 2 + pan.x;
+    const canvasTop = (viewportHeight - CANVAS_SIZE * pixelSize) / 2 + pan.y;
+    
+    // Calculate screen center relative to canvas
+    const screenCenterX = viewportWidth / 2;
+    const screenCenterY = viewportHeight / 2;
+    
+    // Calculate pixel coordinates
+    const pixelX = (screenCenterX - canvasLeft) / pixelSize;
+    const pixelY = (screenCenterY - canvasTop) / pixelSize;
+    
+    // Clamp to canvas bounds
+    const col = Math.max(0, Math.min(CANVAS_SIZE - 1, Math.floor(pixelX)));
+    const row = Math.max(0, Math.min(CANVAS_SIZE - 1, Math.floor(pixelY)));
+    
+    return { row, col };
+  }, [zoom, pan.x, pan.y, CANVAS_SIZE, getPixelSize]);
+
+  // Handle image upload
+  const handleImageUpload = () => {
+    fileInputRef.current?.click();
+  };
+
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      console.log('Processing image:', file.name);
+      
+      // Process image to 20x20 pixels
+      const img = new window.Image();
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      
+      if (ctx) {
+        canvas.width = 20;
+        canvas.height = 20;
+        
+        img.onload = () => {
+          console.log('Image loaded, processing...');
+          
+          // Clear canvas
+          ctx.clearRect(0, 0, 20, 20);
+          
+          // Draw image scaled to 20x20
+          ctx.drawImage(img, 0, 0, 20, 20);
+          
+          // Get pixel data
+          const imageData = ctx.getImageData(0, 0, 20, 20);
+          const data = imageData.data;
+          
+          // Convert to pixel array
+          const pixelData: string[][] = [];
+          for (let y = 0; y < 20; y++) {
+            const row: string[] = [];
+            for (let x = 0; x < 20; x++) {
+              const index = (y * 20 + x) * 4;
+              const r = data[index];
+              const g = data[index + 1];
+              const b = data[index + 2];
+              const a = data[index + 3];
+              
+              // Handle transparency
+              if (a < 128) {
+                row.push('transparent'); // Transparent for transparent pixels
+              } else {
+                // Keep original colors
+                const hex = `#${((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1)}`;
+                row.push(hex);
+              }
+            }
+            pixelData.push(row);
+          }
+          
+          console.log('Pixel data created:', pixelData.length, 'x', pixelData[0]?.length);
+          
+          // Store silhouette data for movement
+          setSilhouettePosition({ x: 90, y: 90 }); // Center position
+          setHasSilhouette(true);
+          setIsSilhouetteLocked(false);
+          
+          // Store silhouette data in a ref for easy access
+          silhouetteDataRef.current = pixelData;
+          
+          // Clean up
+          URL.revokeObjectURL(img.src);
+        };
+        
+        img.onerror = (error) => {
+          console.error('Error loading image:', error);
+          alert('Error loading image. Please try again.');
+        };
+        
+        img.src = URL.createObjectURL(file);
+      }
+    }
+    
+    // Reset file input
+    e.target.value = '';
+  };
+
+  // Detect mobile device
+  useEffect(() => {
+    const checkMobile = () => {
+      setIsMobile(window.innerWidth <= 768 || 'ontouchstart' in window);
+    };
+    
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+    
+    return () => window.removeEventListener('resize', checkMobile);
+  }, []);
+
+  // Update screen center pixel and blinking effect for mobile
+  useEffect(() => {
+    if (!isMobile) return;
+    
+    // Update center pixel based on screen center
+    const newCenterPixel = getScreenCenterPixel();
+    setCenterPixel(newCenterPixel);
+    
+    const interval = setInterval(() => {
+      setBlinkOpacity(prev => prev === 1 ? 0.3 : 1);
+    }, 500); // Blink every 500ms
+    
+    return () => clearInterval(interval);
+  }, [isMobile, getScreenCenterPixel]);
+
   // Initialize canvas with fixed size
   useEffect(() => {
     console.log(`Canvas size for event ${eventId}: ${CANVAS_SIZE}x${CANVAS_SIZE}`);
@@ -387,7 +532,16 @@ export function Canvas({ eventId, selectedColor = '#000000' }: CanvasProps) {
             if (rowData.row >= 0 && rowData.row < CANVAS_SIZE) {
               rowData.pixels.forEach((pixelData: { col: number; color: string }) => {
                 if (pixelData.col >= 0 && pixelData.col < CANVAS_SIZE) {
-                  emptyCanvas[rowData.row][pixelData.col] = pixelData.color;
+                  // Convert short color format back to full hex
+                  let fullColor = pixelData.color;
+                  if (pixelData.color === '0') {
+                    fullColor = '#000000';
+                  } else if (pixelData.color === '1') {
+                    fullColor = '#FFFFFF';
+                  } else if (!pixelData.color.startsWith('#')) {
+                    fullColor = `#${pixelData.color}`;
+                  }
+                  emptyCanvas[rowData.row][pixelData.col] = fullColor;
                 }
               });
             }
@@ -421,11 +575,15 @@ export function Canvas({ eventId, selectedColor = '#000000' }: CanvasProps) {
     if (pixels.length > 0) {
       const timeoutId = setTimeout(() => {
         try {
-          // Compress data by only saving non-white pixels
+          // Compress data by only saving non-white pixels with better compression
           const compressedData = pixels.map((row, rowIndex) => {
             const nonWhitePixels = row.map((color, colIndex) => {
               if (color !== '#FFFFFF') {
-                return { col: colIndex, color };
+                // Use shorter color format if possible
+                const shortColor = color === '#000000' ? '0' : 
+                                  color === '#FFFFFF' ? '1' : 
+                                  color.replace('#', '');
+                return { col: colIndex, color: shortColor };
               }
               return null;
             }).filter(pixel => pixel !== null);
@@ -435,14 +593,17 @@ export function Canvas({ eventId, selectedColor = '#000000' }: CanvasProps) {
           localStorage.setItem(`blaces-${eventId}`, JSON.stringify(compressedData));
         } catch (error) {
           console.warn('Failed to save canvas data:', error);
-          // Try to clear some old data
+          // More aggressive cleanup
           try {
             const keys = Object.keys(localStorage);
             const blacesKeys = keys.filter(key => key.startsWith('blaces-'));
-            if (blacesKeys.length > 10) {
-              // Remove oldest 5 entries
-              blacesKeys.slice(0, 5).forEach(key => localStorage.removeItem(key));
-              // Try saving again
+            
+            // Clear all blaces data if quota exceeded
+            if (blacesKeys.length > 0) {
+              blacesKeys.forEach(key => localStorage.removeItem(key));
+              console.log('Cleared all blaces data due to quota exceeded');
+              
+              // Try saving current data only
               const compressedData = pixels.map((row, rowIndex) => {
                 const nonWhitePixels = row.map((color, colIndex) => {
                   if (color !== '#FFFFFF') {
@@ -453,7 +614,13 @@ export function Canvas({ eventId, selectedColor = '#000000' }: CanvasProps) {
                 return nonWhitePixels.length > 0 ? { row: rowIndex, pixels: nonWhitePixels } : null;
               }).filter(row => row !== null);
               
-              localStorage.setItem(`blaces-${eventId}`, JSON.stringify(compressedData));
+              // Only save if data is not too large
+              const dataSize = JSON.stringify(compressedData).length;
+              if (dataSize < 5000000) { // 5MB limit
+                localStorage.setItem(`blaces-${eventId}`, JSON.stringify(compressedData));
+              } else {
+                console.warn('Canvas data too large, not saving');
+              }
             }
           } catch (clearError) {
             console.error('Failed to clear localStorage:', clearError);
@@ -530,8 +697,28 @@ export function Canvas({ eventId, selectedColor = '#000000' }: CanvasProps) {
 
 
 
-    // Draw hovered pixel highlight
-    if (hoveredPixel) {
+    // Draw silhouette as template (always visible when exists)
+    if (hasSilhouette && silhouetteDataRef.current) {
+      const silhouetteData = silhouetteDataRef.current;
+      for (let y = 0; y < 20; y++) {
+        for (let x = 0; x < 20; x++) {
+          const color = silhouetteData[y][x];
+          if (color && color !== 'transparent') {
+            const targetY = silhouettePosition.y + y;
+            const targetX = silhouettePosition.x + x;
+            if (targetY < CANVAS_SIZE && targetX < CANVAS_SIZE) {
+              // Draw with original colors but semi-transparent
+              const alpha = isSilhouetteLocked ? 0.4 : 0.6;
+              ctx.fillStyle = color + Math.floor(alpha * 255).toString(16).padStart(2, '0');
+              ctx.fillRect(targetX * pixelSize, targetY * pixelSize, pixelSize, pixelSize);
+            }
+          }
+        }
+      }
+    }
+
+    // Draw hovered pixel highlight (desktop)
+    if (hoveredPixel && !isMobile) {
       ctx.strokeStyle = '#000000';
       ctx.lineWidth = 1;
       ctx.strokeRect(
@@ -542,8 +729,60 @@ export function Canvas({ eventId, selectedColor = '#000000' }: CanvasProps) {
       );
     }
 
+    // Draw blinking center pixel for mobile
+    if (isMobile) {
+      // Outer black square
+      ctx.strokeStyle = `rgba(0, 0, 0, ${blinkOpacity})`;
+      ctx.lineWidth = 3;
+      ctx.strokeRect(
+        centerPixel.col * pixelSize - 2,
+        centerPixel.row * pixelSize - 2,
+        pixelSize + 4,
+        pixelSize + 4
+      );
+      
+      // Inner white square
+      ctx.strokeStyle = `rgba(255, 255, 255, ${blinkOpacity})`;
+      ctx.lineWidth = 1;
+      ctx.strokeRect(
+        centerPixel.col * pixelSize,
+        centerPixel.row * pixelSize,
+        pixelSize,
+        pixelSize
+      );
+    }
+
+    // Draw selected pixel highlight (mobile) - only for center pixel
+    if (selectedPixel && isMobile && selectedPixel.row === centerPixel.row && selectedPixel.col === centerPixel.col) {
+      ctx.strokeStyle = '#FF0000';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(
+        selectedPixel.col * pixelSize,
+        selectedPixel.row * pixelSize,
+        pixelSize,
+        pixelSize
+      );
+    }
+
     ctx.restore();
-  }, [pixels, zoom, pan, hoveredPixel, CANVAS_SIZE, getPixelSize]);
+  }, [pixels, zoom, pan, hoveredPixel, selectedPixel, isMobile, centerPixel, blinkOpacity, silhouettePosition, hasSilhouette, isSilhouetteLocked, CANVAS_SIZE, getPixelSize]);
+
+  // Track last selected color to detect when user clicks a color
+  const [lastSelectedColor, setLastSelectedColor] = useState<string | null>(null);
+
+  // Auto-paint screen center pixel on mobile when user clicks a color
+  useEffect(() => {
+    if (isMobile && selectedColor && pixels.length > 0 && lastSelectedColor !== selectedColor) {
+      const screenCenter = getScreenCenterPixel();
+      // Paint the screen center pixel with the clicked color
+      const newPixels = pixels.map(row => [...row]);
+      if (newPixels[screenCenter.row] && newPixels[screenCenter.row][screenCenter.col] !== undefined) {
+        newPixels[screenCenter.row][screenCenter.col] = selectedColor;
+        setPixels(newPixels);
+      }
+      setLastSelectedColor(selectedColor);
+    }
+  }, [selectedColor, isMobile, lastSelectedColor, getScreenCenterPixel]);
 
 
 
@@ -564,7 +803,7 @@ export function Canvas({ eventId, selectedColor = '#000000' }: CanvasProps) {
   // Handle canvas click - paint pixel
   const handleCanvasClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
     // Only handle click if mouse hasn't moved (it's a click, not a drag)
-    if (hasMoved) {
+    if (hasMoved || isDraggingSilhouette) {
       setHasMoved(false); // Reset for next interaction
       return;
     }
@@ -583,8 +822,28 @@ export function Canvas({ eventId, selectedColor = '#000000' }: CanvasProps) {
     const col = Math.floor(mouseX / pixelSize);
     const row = Math.floor(mouseY / pixelSize);
 
-    if (row >= 0 && row < CANVAS_SIZE && col >= 0 && col < CANVAS_SIZE && pixels.length > 0) {
-      // Paint the pixel with selected color
+    // Check if clicking on silhouette area
+    if (hasSilhouette && !isSilhouetteLocked && silhouetteDataRef.current) {
+      const silhouetteLeft = silhouettePosition.x;
+      const silhouetteTop = silhouettePosition.y;
+      const silhouetteRight = silhouetteLeft + 20;
+      const silhouetteBottom = silhouetteTop + 20;
+
+      if (col >= silhouetteLeft && col < silhouetteRight && 
+          row >= silhouetteTop && row < silhouetteBottom) {
+        // Don't paint if clicking on silhouette
+        setHasMoved(false);
+        return;
+      }
+    }
+
+    if (row >= 0 && row < CANVAS_SIZE && col >= 0 && col < CANVAS_SIZE && pixels.length > 0 && pixels[row] && pixels[row][col] !== undefined) {
+      // On mobile, no manual painting allowed - only auto-paint from color selection
+      if (isMobile) {
+        return;
+      }
+      
+      // Paint the pixel with selected color (desktop only)
       const newPixels = pixels.map(row => [...row]);
       newPixels[row][col] = selectedColor;
       setPixels(newPixels);
@@ -594,13 +853,40 @@ export function Canvas({ eventId, selectedColor = '#000000' }: CanvasProps) {
     setHasMoved(false);
   };
 
-  // Handle mouse down for panning
+  // Handle mouse down for panning and silhouette dragging
   const handleMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
     if (e.button === 0) { // Left mouse button
       const canvas = canvasRef.current;
       if (!canvas) return;
 
-      // Start panning
+      const rect = canvas.getBoundingClientRect();
+      const pixelSize = getPixelSize(zoom);
+      
+      // Calculate mouse position relative to canvas
+      const mouseX = e.clientX - rect.left;
+      const mouseY = e.clientY - rect.top;
+      
+      // Calculate pixel coordinates
+      const col = Math.floor(mouseX / pixelSize);
+      const row = Math.floor(mouseY / pixelSize);
+
+      // Check if clicking on silhouette area
+      if (hasSilhouette && !isSilhouetteLocked && silhouetteDataRef.current) {
+        const silhouetteLeft = silhouettePosition.x;
+        const silhouetteTop = silhouettePosition.y;
+        const silhouetteRight = silhouetteLeft + 20;
+        const silhouetteBottom = silhouetteTop + 20;
+
+        if (col >= silhouetteLeft && col < silhouetteRight && 
+            row >= silhouetteTop && row < silhouetteBottom) {
+          // Start dragging silhouette
+          setIsDraggingSilhouette(true);
+          setDragStartPosition({ x: col - silhouetteLeft, y: row - silhouetteTop });
+          return;
+        }
+      }
+
+      // Start panning if not clicking on silhouette
       setIsPanning(true);
       setHasMoved(false);
       setMouseDownPoint({ x: e.clientX, y: e.clientY });
@@ -608,7 +894,7 @@ export function Canvas({ eventId, selectedColor = '#000000' }: CanvasProps) {
     }
   };
 
-  // Handle mouse move for panning and hover
+  // Handle mouse move for panning, hover, and silhouette dragging
   const handleMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -619,6 +905,18 @@ export function Canvas({ eventId, selectedColor = '#000000' }: CanvasProps) {
     // Calculate mouse position relative to canvas
     const mouseX = e.clientX - rect.left;
     const mouseY = e.clientY - rect.top;
+    
+    // Calculate pixel coordinates
+    const col = Math.floor(mouseX / pixelSize);
+    const row = Math.floor(mouseY / pixelSize);
+    
+    if (isDraggingSilhouette) {
+      // Drag silhouette
+      const newX = Math.max(0, Math.min(CANVAS_SIZE - 20, col - dragStartPosition.x));
+      const newY = Math.max(0, Math.min(CANVAS_SIZE - 20, row - dragStartPosition.y));
+      setSilhouettePosition({ x: newX, y: newY });
+      return;
+    }
     
     if (isPanning) {
       const deltaX = e.clientX - lastPanPoint.x;
@@ -638,10 +936,6 @@ export function Canvas({ eventId, selectedColor = '#000000' }: CanvasProps) {
         const newX = prevPan.x + deltaX;
         const newY = prevPan.y + deltaY;
         
-        // Calculate hover - rect.left/top already includes the transform
-        const col = Math.floor(mouseX / pixelSize);
-        const row = Math.floor(mouseY / pixelSize);
-        
         if (row >= 0 && row < CANVAS_SIZE && col >= 0 && col < CANVAS_SIZE) {
           setHoveredPixel({ row, col });
         } else {
@@ -657,10 +951,7 @@ export function Canvas({ eventId, selectedColor = '#000000' }: CanvasProps) {
       
       setLastPanPoint({ x: e.clientX, y: e.clientY });
     } else {
-      // Just update hover when not panning
-      const col = Math.floor(mouseX / pixelSize);
-      const row = Math.floor(mouseY / pixelSize);
-      
+      // Just update hover when not panning or dragging
       if (row >= 0 && row < CANVAS_SIZE && col >= 0 && col < CANVAS_SIZE) {
         setHoveredPixel({ row, col });
       } else {
@@ -669,15 +960,17 @@ export function Canvas({ eventId, selectedColor = '#000000' }: CanvasProps) {
     }
   };
 
-  // Handle mouse up to stop panning
+  // Handle mouse up to stop panning and silhouette dragging
   const handleMouseUp = () => {
     setIsPanning(false);
+    setIsDraggingSilhouette(false);
     // Don't reset hasMoved here - let the click handler decide
   };
 
   // Handle mouse leave
   const handleMouseLeave = () => {
     setIsPanning(false);
+    setIsDraggingSilhouette(false);
     setHoveredPixel(null);
   };
 
@@ -695,17 +988,55 @@ export function Canvas({ eventId, selectedColor = '#000000' }: CanvasProps) {
         Math.pow(touch2.clientY - touch1.clientY, 2)
       );
       
-
-      
       setTouchDistance(distance);
       setIsPanning(false); // Disable panning during zoom
     } else if (e.touches.length === 1) {
-      // Single finger touch - handle panning only
+      // Single finger touch - handle panning or pixel selection
       const touch = e.touches[0];
+      const canvas = canvasRef.current;
       
+      if (canvas) {
+        const rect = canvas.getBoundingClientRect();
+        const pixelSize = getPixelSize(zoom);
+        
+        // Calculate touch position relative to canvas
+        const touchX = touch.clientX - rect.left;
+        const touchY = touch.clientY - rect.top;
+        
+        // Calculate pixel coordinates
+        const col = Math.floor(touchX / pixelSize);
+        const row = Math.floor(touchY / pixelSize);
+        
+        // Check if touching silhouette area
+        if (hasSilhouette && !isSilhouetteLocked && silhouetteDataRef.current) {
+          const silhouetteLeft = silhouettePosition.x;
+          const silhouetteTop = silhouettePosition.y;
+          const silhouetteRight = silhouetteLeft + 20;
+          const silhouetteBottom = silhouetteTop + 20;
 
+          if (col >= silhouetteLeft && col < silhouetteRight && 
+              row >= silhouetteTop && row < silhouetteBottom) {
+            // Start dragging silhouette
+            setIsDraggingSilhouette(true);
+            setDragStartPosition({ x: col - silhouetteLeft, y: row - silhouetteTop });
+            return;
+          }
+        }
+        
+        // Set selected pixel for mobile (only center pixel)
+        if (row >= 0 && row < CANVAS_SIZE && col >= 0 && col < CANVAS_SIZE) {
+          if (isMobile) {
+            // Only allow selection of center pixel on mobile
+            if (row === centerPixel.row && col === centerPixel.col) {
+              setSelectedPixel({ row, col });
+            }
+          } else {
+            setSelectedPixel({ row, col });
+          }
+        }
+      }
       
-      // If not touching interactive elements, start panning
+      // Start panning
       setIsPanning(true);
       setHasMoved(false);
       setMouseDownPoint({ x: touch.clientX, y: touch.clientY });
@@ -739,8 +1070,29 @@ export function Canvas({ eventId, selectedColor = '#000000' }: CanvasProps) {
       
       setTouchDistance(newDistance);
     } else if (e.touches.length === 1 && isPanning && !touchDistance) {
-      // Single finger touch - handle panning only (no zoom, no touch distance)
+      // Single finger touch - handle panning or silhouette dragging
       const touch = e.touches[0];
+      
+      if (isDraggingSilhouette) {
+        // Drag silhouette
+        const canvas = canvasRef.current;
+        if (canvas) {
+          const rect = canvas.getBoundingClientRect();
+          const pixelSize = getPixelSize(zoom);
+          
+          const touchX = touch.clientX - rect.left;
+          const touchY = touch.clientY - rect.top;
+          
+          const col = Math.floor(touchX / pixelSize);
+          const row = Math.floor(touchY / pixelSize);
+          
+          const newX = Math.max(0, Math.min(CANVAS_SIZE - 20, col - dragStartPosition.x));
+          const newY = Math.max(0, Math.min(CANVAS_SIZE - 20, row - dragStartPosition.y));
+          setSilhouettePosition({ x: newX, y: newY });
+        }
+        return;
+      }
+      
       const deltaX = touch.clientX - lastPanPoint.x;
       const deltaY = touch.clientY - lastPanPoint.y;
       
@@ -752,16 +1104,16 @@ export function Canvas({ eventId, selectedColor = '#000000' }: CanvasProps) {
         setHasMoved(true);
       }
       
-              setPan(prevPan => {
-          const newX = prevPan.x + deltaX;
-          const newY = prevPan.y + deltaY;
-          
-          // No boundaries - free panning on large background
-          return {
-            x: newX,
-            y: newY
-          };
-        });
+      setPan(prevPan => {
+        const newX = prevPan.x + deltaX;
+        const newY = prevPan.y + deltaY;
+        
+        // No boundaries - free panning on large background
+        return {
+          x: newX,
+          y: newY
+        };
+      });
       
       setLastPanPoint({ x: touch.clientX, y: touch.clientY });
     }
@@ -770,13 +1122,9 @@ export function Canvas({ eventId, selectedColor = '#000000' }: CanvasProps) {
   const handleTouchEnd = (e: React.TouchEvent) => {
     e.preventDefault();
     
-
-    
-
-    
     if (e.touches.length === 0) {
       // Handle touch click (pixel selection) if no movement occurred
-      if (isPanning && !hasMoved) {
+      if (isPanning && !hasMoved && !isDraggingSilhouette) {
         const touch = e.changedTouches[0];
         const canvas = canvasRef.current;
         if (canvas) {
@@ -791,8 +1139,13 @@ export function Canvas({ eventId, selectedColor = '#000000' }: CanvasProps) {
           const col = Math.floor(touchX / pixelSize);
           const row = Math.floor(touchY / pixelSize);
 
-          if (row >= 0 && row < CANVAS_SIZE && col >= 0 && col < CANVAS_SIZE && pixels.length > 0) {
-            // Paint the pixel with selected color
+          if (row >= 0 && row < CANVAS_SIZE && col >= 0 && col < CANVAS_SIZE && pixels.length > 0 && pixels[row] && pixels[row][col] !== undefined) {
+            // On mobile, no manual painting allowed - only auto-paint from color selection
+            if (isMobile) {
+              return;
+            }
+            
+            // Paint the pixel with selected color (desktop only)
             const newPixels = pixels.map(row => [...row]);
             newPixels[row][col] = selectedColor;
             setPixels(newPixels);
@@ -801,6 +1154,7 @@ export function Canvas({ eventId, selectedColor = '#000000' }: CanvasProps) {
       }
       
       setIsPanning(false);
+      setIsDraggingSilhouette(false);
       setTouchDistance(null);
       setHasMoved(false);
     }
@@ -824,6 +1178,41 @@ export function Canvas({ eventId, selectedColor = '#000000' }: CanvasProps) {
 
   return (
     <div className="w-full h-screen relative overflow-hidden bg-gray-100" style={{ transformStyle: 'preserve-3d' }}>
+      {/* Button Container */}
+      <div className="absolute top-4 left-4 z-10 flex flex-col space-y-2">
+        {/* Upload Button */}
+        <button
+          onClick={handleImageUpload}
+          className="bg-blue-500 text-white px-4 py-2 rounded-lg shadow-lg hover:bg-blue-600 transition-colors font-medium w-32"
+        >
+          Upload Image
+        </button>
+
+        {/* Lock Button - only show if silhouette exists */}
+        {hasSilhouette && (
+          <button
+            onClick={() => {
+              setIsSilhouetteLocked(!isSilhouetteLocked);
+            }}
+            className={`px-4 py-2 rounded-lg shadow-lg transition-colors font-medium w-32 ${
+              isSilhouetteLocked 
+                ? 'bg-blue-600 text-white hover:bg-blue-700' 
+                : 'bg-blue-500 text-white hover:bg-blue-600'
+            }`}
+          >
+            {isSilhouetteLocked ? '🔒 Template Locked' : '🔓 Template Unlocked'}
+          </button>
+        )}
+      </div>
+
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/*"
+        onChange={handleFileSelect}
+        className="hidden"
+      />
+
       {/* Large Background Canvas */}
       <div 
         className="absolute inset-0 bg-gray-100"
