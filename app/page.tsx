@@ -70,8 +70,8 @@ export default function App() {
 
   return (
     <div className="flex flex-col min-h-screen font-sans text-[var(--app-foreground)] mini-app-theme from-[var(--app-background)] to-[var(--app-gray)]">
-      <div className="w-full max-w-md mx-auto px-4 py-3">
-        <header className="flex justify-between items-center mb-3 h-11">
+      <div className="w-full h-full flex flex-col">
+        <header className="flex justify-between items-center p-4 bg-background/80 backdrop-blur-sm border-b border-border">
           <div>
             <div className="flex items-center space-x-2">
               <Wallet className="z-10">
@@ -93,11 +93,13 @@ export default function App() {
           <div>{saveFrameButton}</div>
         </header>
 
-        <main className="flex-1">
-          <BlacesHome />
+        <main className="flex-1 flex items-center justify-center p-4">
+          <div className="w-full max-w-lg">
+            <BlacesHome />
+          </div>
         </main>
 
-        <footer className="mt-2 pt-4 flex justify-center">
+        <footer className="p-4 flex justify-center bg-background/80 backdrop-blur-sm border-t border-border">
           <Button
             variant="ghost"
             size="sm"

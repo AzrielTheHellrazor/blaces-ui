@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef, useCallback } from "react";
+import Image from "next/image";
 import { Button } from "./DemoComponents";
 import { Icon } from "./DemoComponents";
 
@@ -20,7 +21,7 @@ export function ImageUpload({ onImageUpload }: ImageUploadProps) {
   // Convert image to pixel data with 8-bit color quantization
   const processImage = useCallback((file: File): Promise<string[][]> => {
     return new Promise((resolve, reject) => {
-      const img = new Image();
+      const img = new window.Image();
       const canvas = document.createElement('canvas');
       const ctx = canvas.getContext('2d');
 
@@ -295,9 +296,11 @@ export function ImageUpload({ onImageUpload }: ImageUploadProps) {
           </div>
           {showPreview && (
             <div className="bg-card-bg p-4 rounded-lg border border-card-border">
-              <img 
+              <Image 
                 src={previewUrl} 
                 alt="Preview" 
+                width={200}
+                height={128}
                 className="w-full h-auto max-h-32 object-contain mx-auto"
               />
             </div>

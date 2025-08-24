@@ -2,131 +2,117 @@
 
 import {
   useMiniKit,
-  useAddFrame,
-  useOpenUrl,
 } from "@coinbase/onchainkit/minikit";
-import {
-  Name,
-  Identity,
-  Address,
-  Avatar,
-  EthBalance,
-} from "@coinbase/onchainkit/identity";
-import {
-  ConnectWallet,
-  Wallet,
-  WalletDropdown,
-  WalletDropdownDisconnect,
-} from "@coinbase/onchainkit/wallet";
-import { useEffect, useMemo, useState, useCallback } from "react";
-import { Button } from "../../components/DemoComponents";
-import { Icon } from "../../components/DemoComponents";
+import { useEffect, useState } from "react";
 import { Canvas } from "../../components/BlacesComponents";
+import { createPortal } from "react-dom";
+
+// Curated color palette with 64 most useful colors
+const COLORS = [
+  // Essential colors
+  '#000000', '#FFFFFF', '#808080', '#C0C0C0',
+  
+  // Reds
+  '#FF0000', '#FF3333', '#FF6666', '#FF9999', '#CC0000', '#990000', '#660000',
+  
+  // Oranges
+  '#FF6600', '#FF9900', '#FFCC00', '#CC6600', '#996600',
+  
+  // Yellows
+  '#FFFF00', '#FFFF33', '#FFFF66', '#CCCC00', '#999900',
+  
+  // Greens
+  '#00FF00', '#33FF33', '#66FF66', '#00CC00', '#009900', '#006600',
+  
+  // Teals/Cyans
+  '#00FFFF', '#33FFFF', '#00CCCC', '#009999',
+  
+  // Blues
+  '#0000FF', '#3333FF', '#6666FF', '#9999FF', '#0000CC', '#000099', '#000066',
+  
+  // Purples
+  '#8000FF', '#9933FF', '#CC66FF', '#6600CC', '#330099',
+  
+  // Pinks/Magentas
+  '#FF00FF', '#FF33FF', '#FF66FF', '#CC00CC', '#990099',
+  
+  // Browns
+  '#8B4513', '#A0522D', '#CD853F', '#D2691E', '#B8860B',
+  
+  // Pastels
+  '#FFB6C1', '#FFC0CB', '#FFE4E1', '#F0F8FF', '#F0FFF0', '#FFFFF0',
+  
+  // Dark variants
+  '#2F2F2F', '#4F4F4F', '#6F6F6F', '#8F8F8F', '#AF8F8F', '#CF8F8F',
+  
+  // Vibrant extras
+  '#FF1493', '#FF69B4', '#FF4500', '#FFD700', '#32CD32', '#00CED1', '#9370DB', '#FF6347'
+];
 
 type EventPageClientProps = {
   eventId: string;
 };
 
 export function EventPageClient({ eventId }: EventPageClientProps) {
-  const { setFrameReady, isFrameReady, context } = useMiniKit();
-  const [frameAdded, setFrameAdded] = useState(false);
-
-  const addFrame = useAddFrame();
-  const openUrl = useOpenUrl();
+  const { setFrameReady, isFrameReady } = useMiniKit();
+  const [selectedColor, setSelectedColor] = useState(COLORS[0]);
+  const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
+    setMounted(true);
     if (!isFrameReady) {
       setFrameReady();
     }
   }, [setFrameReady, isFrameReady]);
 
-  const handleAddFrame = useCallback(async () => {
-    const frameAdded = await addFrame();
-    setFrameAdded(Boolean(frameAdded));
-  }, [addFrame]);
-
-  const saveFrameButton = useMemo(() => {
-    if (context && !context.client.added) {
-      return (
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={handleAddFrame}
-          className="text-[var(--app-accent)] p-4"
-          icon={<Icon name="plus" size="sm" />}
-        >
-          Save Frame
-        </Button>
-      );
-    }
-
-    if (frameAdded) {
-      return (
-        <div className="flex items-center space-x-1 text-sm font-medium text-[#0052FF] animate-fade-out">
-          <Icon name="check" size="sm" className="text-[#0052FF]" />
-          <span>Saved</span>
-        </div>
-      );
-    }
-
-    return null;
-  }, [context, frameAdded, handleAddFrame]);
-
-  return (
-    <div className="flex flex-col min-h-screen font-sans text-[var(--app-foreground)] mini-app-theme from-[var(--app-background)] to-[var(--app-gray)]">
-      <div className="w-full max-w-md mx-auto px-4 py-3">
-        <header className="flex justify-between items-center mb-3 h-11">
-          <div>
-            <div className="flex items-center space-x-2">
-              <Wallet className="z-10">
-                <ConnectWallet>
-                  <Name className="text-inherit" />
-                </ConnectWallet>
-                <WalletDropdown>
-                  <Identity className="px-4 pt-3 pb-2" hasCopyAddressOnClick>
-                    <Avatar />
-                    <Name />
-                    <Address />
-                    <EthBalance />
-                  </Identity>
-                  <WalletDropdownDisconnect />
-                </WalletDropdown>
-              </Wallet>
-            </div>
-          </div>
-          <div className="flex items-center space-x-2">
-            {saveFrameButton}
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => {
-                if (typeof window !== 'undefined') {
-                  window.location.href = '/';
-                }
-              }}
-              className="text-foreground-muted hover:text-foreground p-2"
-              icon={<Icon name="close" size="sm" />}
-            >
-              Close
-            </Button>
-          </div>
-        </header>
-
-        <main className="flex-1">
-          <Canvas eventId={eventId} />
-        </main>
-
-        <footer className="mt-2 pt-4 flex justify-center">
-          <Button
-            variant="ghost"
-            size="sm"
-            className="text-[var(--ock-text-foreground-muted)] text-xs"
-            onClick={() => openUrl("https://base.org/builders/minikit")}
-          >
-            Built on Base with MiniKit
-          </Button>
-        </footer>
+  const paletteElement = (
+    <div 
+      className="bg-white rounded-lg shadow-lg border border-gray-200 p-3"
+      style={{
+        position: 'fixed',
+        top: '50vh',
+        right: '16px',
+        transform: 'translateY(-50%)',
+        zIndex: 999999,
+        pointerEvents: 'auto',
+        isolation: 'isolate',
+        contain: 'layout style paint',
+        transformStyle: 'preserve-3d',
+        willChange: 'auto',
+        maxWidth: '80px'
+      }}
+    >
+      <div 
+        className="grid grid-cols-2 gap-1 max-h-96 overflow-y-auto"
+        style={{
+          scrollbarWidth: 'none',
+          msOverflowStyle: 'none'
+        }}
+      >
+        {COLORS.map((color) => (
+          <button
+            key={color}
+            onClick={() => setSelectedColor(color)}
+            className={`w-6 h-6 rounded border transition-all ${
+              selectedColor === color ? 'border-black scale-110' : 'border-gray-300 hover:border-gray-500'
+            }`}
+            style={{ backgroundColor: color }}
+            title={color}
+          />
+        ))}
       </div>
     </div>
+  );
+
+  return (
+    <>
+      <div className="w-full h-screen bg-gray-200 overflow-hidden relative">
+        {/* Full Screen Canvas - Pixel Place Style */}
+        <Canvas eventId={eventId} selectedColor={selectedColor} />
+      </div>
+      
+      {/* Color Palette - Rendered as Portal to avoid zoom interference */}
+      {mounted && createPortal(paletteElement, document.body)}
+    </>
   );
 }
