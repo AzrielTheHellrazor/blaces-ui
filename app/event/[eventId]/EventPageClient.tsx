@@ -13,19 +13,19 @@ const COLORS = [
   '#000000', '#FFFFFF', '#808080', '#C0C0C0',
   
   // Reds
-  '#FF0000', '#FF3333', '#FF6666', '#FF9999', '#CC0000', '#990000', '#660000',
+  '#FF0000', '#FF3333', '#FF6666', '#CC0000', '#990000', '#660000',
   
   // Oranges
-  '#FF6600', '#FF9900', '#FFCC00', '#CC6600', '#996600',
+  '#FF6600', '#FF9900', '#FFCC00', '#CC6600',
   
   // Yellows
-  '#FFFF00', '#FFFF33', '#FFFF66', '#CCCC00', '#999900',
+  '#FFFF00', '#FFFF33', '#CCCC00', '#999900',
   
   // Greens
   '#00FF00', '#33FF33', '#66FF66', '#00CC00', '#009900', '#006600',
   
   // Teals/Cyans
-  '#00FFFF', '#33FFFF', '#00CCCC', '#009999',
+  '#00FFFF', '#33FFFF', '#00CCCC',
   
   // Blues
   '#0000FF', '#3333FF', '#6666FF', '#9999FF', '#0000CC', '#000099', '#000066',
@@ -37,16 +37,16 @@ const COLORS = [
   '#FF00FF', '#FF33FF', '#FF66FF', '#CC00CC', '#990099',
   
   // Browns
-  '#8B4513', '#A0522D', '#CD853F', '#D2691E', '#B8860B',
+  '#8B4513', '#A0522D', '#CD853F', '#D2691E',
   
   // Pastels
-  '#FFB6C1', '#FFC0CB', '#FFE4E1', '#F0F8FF', '#F0FFF0', '#FFFFF0',
+  '#FFB6C1', '#FFC0CB', '#F0F8FF', '#F0FFF0',
   
   // Dark variants
-  '#2F2F2F', '#4F4F4F', '#6F6F6F', '#8F8F8F', '#AF8F8F', '#CF8F8F',
+  '#2F2F2F', '#4F4F4F', '#6F6F6F', '#8F8F8F',
   
   // Vibrant extras
-  '#FF1493', '#FF69B4', '#FF4500', '#FFD700', '#32CD32', '#00CED1', '#9370DB', '#FF6347'
+  '#FF1493', '#FF4500', '#FFD700', '#32CD32', '#00CED1', '#9370DB', '#FF6347', '#FF8C00'
 ];
 
 type EventPageClientProps = {
