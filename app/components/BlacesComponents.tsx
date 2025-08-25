@@ -409,6 +409,15 @@ export function Canvas({ eventId, selectedColor = '#000000' }: CanvasProps) {
     fileInputRef.current?.click();
   };
 
+  const handleClearImage = () => {
+    setHasSilhouette(false);
+    setIsSilhouetteLocked(false);
+    setSilhouettePosition({ x: 0, y: 0 });
+    if (silhouetteDataRef.current) {
+      silhouetteDataRef.current = null;
+    }
+  };
+
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
@@ -1201,6 +1210,16 @@ export function Canvas({ eventId, selectedColor = '#000000' }: CanvasProps) {
             }`}
           >
             {isSilhouetteLocked ? '🔒 Template Locked' : '🔓 Template Unlocked'}
+          </button>
+        )}
+
+        {/* Clear Image Button - only show if silhouette exists */}
+        {hasSilhouette && (
+          <button
+            onClick={handleClearImage}
+            className="bg-blue-500 text-white px-4 py-2 rounded-lg shadow-lg hover:bg-blue-600 transition-colors font-medium w-32"
+          >
+            🗑️ Clear Image
           </button>
         )}
       </div>
