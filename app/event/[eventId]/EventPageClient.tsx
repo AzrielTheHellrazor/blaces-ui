@@ -83,7 +83,7 @@ export function EventPageClient({ eventId }: EventPageClientProps) {
       }}
     >
       <div 
-        className="grid grid-cols-2 gap-1 max-h-96 overflow-y-auto"
+        className="grid grid-cols-2 gap-1 max-h-[500px] overflow-y-auto"
         style={{
           scrollbarWidth: 'none',
           msOverflowStyle: 'none'
@@ -93,7 +93,7 @@ export function EventPageClient({ eventId }: EventPageClientProps) {
           <button
             key={color}
             onClick={() => setSelectedColor(color)}
-            className={`w-6 h-6 rounded border transition-all ${
+            className={`w-5 h-5 rounded border transition-all ${
               selectedColor === color ? 'border-black scale-110' : 'border-gray-300 hover:border-gray-500'
             }`}
             style={{ backgroundColor: color }}
