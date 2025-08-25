@@ -1017,6 +1017,7 @@ export function Canvas({ eventId, selectedColor = '#000000' }: CanvasProps) {
               row >= silhouetteTop && row < silhouetteBottom) {
             // Start dragging silhouette
             setIsDraggingSilhouette(true);
+            setIsPanning(false); // Don't start panning when dragging silhouette
             setDragStartPosition({ x: col - silhouetteLeft, y: row - silhouetteTop });
             return;
           }
@@ -1068,7 +1069,7 @@ export function Canvas({ eventId, selectedColor = '#000000' }: CanvasProps) {
       setZoom(newZoom);
       
       setTouchDistance(newDistance);
-    } else if (e.touches.length === 1 && isPanning && !touchDistance) {
+    } else if (e.touches.length === 1 && (isPanning || isDraggingSilhouette) && !touchDistance) {
       // Single finger touch - handle panning or silhouette dragging
       const touch = e.touches[0];
       
