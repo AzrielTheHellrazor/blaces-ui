@@ -1209,7 +1209,7 @@ export function Canvas({ eventId, selectedColor = '#000000' }: CanvasProps) {
                 : 'bg-blue-500 text-white hover:bg-blue-600'
             }`}
           >
-            {isSilhouetteLocked ? '🔒 Template Locked' : '🔓 Template Unlocked'}
+            {isSilhouetteLocked ? 'Template Locked' : 'Template Unlocked'}
           </button>
         )}
 
@@ -1219,7 +1219,7 @@ export function Canvas({ eventId, selectedColor = '#000000' }: CanvasProps) {
             onClick={handleClearImage}
             className="bg-blue-500 text-white px-4 py-2 rounded-lg shadow-lg hover:bg-blue-600 transition-colors font-medium w-32"
           >
-            🗑️ Clear Image
+            Clear Image
           </button>
         )}
       </div>
