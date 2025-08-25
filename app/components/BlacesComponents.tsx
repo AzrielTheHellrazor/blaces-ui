@@ -787,7 +787,7 @@ export function Canvas({ eventId, selectedColor = '#000000' }: CanvasProps) {
 
   // Mouse wheel zoom handler - simplified
   const handleWheel = (e: React.WheelEvent) => {
-    e.preventDefault();
+    // Don't prevent default to avoid passive event listener warning
     
     // Only allow zoom when not panning
     if (isPanning) return;
@@ -975,7 +975,7 @@ export function Canvas({ eventId, selectedColor = '#000000' }: CanvasProps) {
 
   // Optimized touch event handlers for mobile
   const handleTouchStart = (e: React.TouchEvent) => {
-    e.preventDefault();
+    // Don't prevent default to avoid passive event listener warning
     
     if (e.touches.length === 2) {
       // Two finger touch - prepare for zoom only
@@ -1045,7 +1045,7 @@ export function Canvas({ eventId, selectedColor = '#000000' }: CanvasProps) {
   };
 
   const handleTouchMove = (e: React.TouchEvent) => {
-    e.preventDefault();
+    // Don't prevent default to avoid passive event listener warning
     
 
     
@@ -1119,7 +1119,7 @@ export function Canvas({ eventId, selectedColor = '#000000' }: CanvasProps) {
   };
 
   const handleTouchEnd = (e: React.TouchEvent) => {
-    e.preventDefault();
+    // Don't prevent default to avoid passive event listener warning
     
     if (e.touches.length === 0) {
       // Handle touch click (pixel selection) if no movement occurred
@@ -1238,6 +1238,7 @@ export function Canvas({ eventId, selectedColor = '#000000' }: CanvasProps) {
         onTouchMove={handleTouchMove}
         onTouchEnd={handleTouchEnd}
         onWheel={handleWheel}
+        onWheelCapture={handleWheel}
         style={{
           display: 'block',
           cursor: isPanning ? 'grabbing' : 'crosshair',
@@ -1247,6 +1248,7 @@ export function Canvas({ eventId, selectedColor = '#000000' }: CanvasProps) {
           transform: `translate(-50%, -50%) translate3d(${pan.x}px, ${pan.y}px, 0)`,
           touchAction: 'none',
           userSelect: 'none',
+          overscrollBehavior: 'none',
           transition: 'none',
           willChange: 'transform',
           backfaceVisibility: 'hidden',
