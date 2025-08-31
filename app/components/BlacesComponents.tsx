@@ -1152,6 +1152,30 @@ export function Canvas({ eventId, selectedColor = '#000000' }: CanvasProps) {
             return;
           }
         }
+
+        // Handle brush painting on touch start - only when over silhouette area
+        if (isBrushMode && isSilhouetteLocked && hasSilhouette && silhouetteDataRef.current) {
+          const silhouetteLeft = silhouettePosition.x;
+          const silhouetteTop = silhouettePosition.y;
+          const silhouetteRight = silhouetteLeft + 20;
+          const silhouetteBottom = silhouetteTop + 20;
+
+          if (col >= silhouetteLeft && col < silhouetteRight && 
+              row >= silhouetteTop && row < silhouetteBottom) {
+            // Check if the pixel is not transparent in the silhouette
+            const silhouetteRow = row - silhouetteTop;
+            const silhouetteCol = col - silhouetteLeft;
+            const silhouettePixel = silhouetteDataRef.current[silhouetteRow]?.[silhouetteCol];
+            
+            if (silhouettePixel && silhouettePixel !== 'transparent') {
+              paintWithBrush(row, col);
+              setIsPaintingOnSilhouette(true);
+              setIsBrushDragging(true);
+              // Don't start panning when painting on silhouette
+              return;
+            }
+          }
+        }
         
         // Set selected pixel for mobile (only center pixel)
         if (row >= 0 && row < CANVAS_SIZE && col >= 0 && col < CANVAS_SIZE) {
@@ -1199,8 +1223,8 @@ export function Canvas({ eventId, selectedColor = '#000000' }: CanvasProps) {
       setZoom(newZoom);
       
       setTouchDistance(newDistance);
-    } else if (e.touches.length === 1 && (isPanning || isDraggingSilhouette) && !touchDistance) {
-      // Single finger touch - handle panning or silhouette dragging
+    } else if (e.touches.length === 1 && (isPanning || isDraggingSilhouette || isBrushDragging) && !touchDistance) {
+      // Single finger touch - handle panning, silhouette dragging, or brush painting
       const touch = e.touches[0];
       
       if (isDraggingSilhouette) {
@@ -1222,30 +1246,70 @@ export function Canvas({ eventId, selectedColor = '#000000' }: CanvasProps) {
         }
         return;
       }
-      
-      const deltaX = touch.clientX - lastPanPoint.x;
-      const deltaY = touch.clientY - lastPanPoint.y;
-      
-      const totalDeltaX = touch.clientX - mouseDownPoint.x;
-      const totalDeltaY = touch.clientY - mouseDownPoint.y;
-      const moveThreshold = 5;
-      
-      if (Math.abs(totalDeltaX) > moveThreshold || Math.abs(totalDeltaY) > moveThreshold) {
-        setHasMoved(true);
+
+      // Handle brush painting during touch move
+      if (isBrushDragging && isBrushMode && isSilhouetteLocked && hasSilhouette && silhouetteDataRef.current) {
+        const canvas = canvasRef.current;
+        if (canvas) {
+          const rect = canvas.getBoundingClientRect();
+          const pixelSize = getPixelSize(zoom);
+          
+          const touchX = touch.clientX - rect.left;
+          const touchY = touch.clientY - rect.top;
+          
+          const col = Math.floor(touchX / pixelSize);
+          const row = Math.floor(touchY / pixelSize);
+          
+          // Check if we're over the silhouette area
+          const silhouetteLeft = silhouettePosition.x;
+          const silhouetteTop = silhouettePosition.y;
+          const silhouetteRight = silhouetteLeft + 20;
+          const silhouetteBottom = silhouetteTop + 20;
+
+          if (col >= silhouetteLeft && col < silhouetteRight && 
+              row >= silhouetteTop && row < silhouetteBottom) {
+            // Check if the pixel is not transparent in the silhouette
+            const silhouetteRow = row - silhouetteTop;
+            const silhouetteCol = col - silhouetteLeft;
+            const silhouettePixel = silhouetteDataRef.current[silhouetteRow]?.[silhouetteCol];
+            
+            if (silhouettePixel && silhouettePixel !== 'transparent') {
+              paintWithBrush(row, col);
+              setIsPaintingOnSilhouette(true);
+            }
+          }
+        }
+        // Keep panning disabled while brush is active
+        setIsPaintingOnSilhouette(true);
+        return;
       }
       
-      setPan(prevPan => {
-        const newX = prevPan.x + deltaX;
-        const newY = prevPan.y + deltaY;
+      // Only pan if not painting on silhouette
+      if (!isPaintingOnSilhouette) {
+        const deltaX = touch.clientX - lastPanPoint.x;
+        const deltaY = touch.clientY - lastPanPoint.y;
         
-        // No boundaries - free panning on large background
-        return {
-          x: newX,
-          y: newY
-        };
-      });
-      
-      setLastPanPoint({ x: touch.clientX, y: touch.clientY });
+        const totalDeltaX = touch.clientX - mouseDownPoint.x;
+        const totalDeltaY = touch.clientY - mouseDownPoint.y;
+        const moveThreshold = 5;
+        
+        if (Math.abs(totalDeltaX) > moveThreshold || Math.abs(totalDeltaY) > moveThreshold) {
+          setHasMoved(true);
+        }
+        
+        setPan(prevPan => {
+          const newX = prevPan.x + deltaX;
+          const newY = prevPan.y + deltaY;
+          
+          // No boundaries - free panning on large background
+          return {
+            x: newX,
+            y: newY
+          };
+        });
+        
+        setLastPanPoint({ x: touch.clientX, y: touch.clientY });
+      }
     }
   };
 
@@ -1285,6 +1349,8 @@ export function Canvas({ eventId, selectedColor = '#000000' }: CanvasProps) {
       
       setIsPanning(false);
       setIsDraggingSilhouette(false);
+      setIsPaintingOnSilhouette(false);
+      setIsBrushDragging(false);
       setTouchDistance(null);
       setHasMoved(false);
     }
