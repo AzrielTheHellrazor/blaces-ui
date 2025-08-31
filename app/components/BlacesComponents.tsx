@@ -1189,13 +1189,15 @@ export function Canvas({ eventId, selectedColor = '#000000' }: CanvasProps) {
     <div className="w-full h-screen relative overflow-hidden bg-gray-100" style={{ transformStyle: 'preserve-3d' }}>
       {/* Button Container */}
       <div className="absolute top-4 left-4 z-10 flex flex-col space-y-2">
-        {/* Upload Button */}
-        <button
-          onClick={handleImageUpload}
-          className="bg-blue-500 text-white px-4 py-2 rounded-lg shadow-lg hover:bg-blue-600 transition-colors font-medium w-32"
-        >
-          Upload Image
-        </button>
+        {/* Upload Button - only show if no silhouette exists */}
+        {!hasSilhouette && (
+          <button
+            onClick={handleImageUpload}
+            className="bg-blue-500 text-white px-4 py-2 rounded-lg shadow-lg hover:bg-blue-600 transition-colors font-medium w-32"
+          >
+            Upload Image
+          </button>
+        )}
 
         {/* Lock Button - only show if silhouette exists */}
         {hasSilhouette && (
@@ -1217,7 +1219,7 @@ export function Canvas({ eventId, selectedColor = '#000000' }: CanvasProps) {
         {hasSilhouette && (
           <button
             onClick={handleClearImage}
-            className="bg-blue-500 text-white px-4 py-2 rounded-lg shadow-lg hover:bg-blue-600 transition-colors font-medium w-32"
+            className="bg-red-500 text-white px-4 py-2 rounded-lg shadow-lg hover:bg-red-600 transition-colors font-medium w-32"
           >
             Clear Image
           </button>
