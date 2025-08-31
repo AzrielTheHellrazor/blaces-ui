@@ -349,6 +349,10 @@ export function Canvas({ eventId, selectedColor = '#000000' }: CanvasProps) {
   const [isMobile, setIsMobile] = useState(false);
   const [centerPixel, setCenterPixel] = useState({ row: 100, col: 100 }); // Will be calculated dynamically
   const [blinkOpacity, setBlinkOpacity] = useState(1);
+  const [isBrushMode, setIsBrushMode] = useState(false);
+  const [isPaintingOnSilhouette, setIsPaintingOnSilhouette] = useState(false);
+  const [isBrushDragging, setIsBrushDragging] = useState(false);
+  const brushSize = 3; // Fixed brush size
   
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -416,6 +420,41 @@ export function Canvas({ eventId, selectedColor = '#000000' }: CanvasProps) {
     if (silhouetteDataRef.current) {
       silhouetteDataRef.current = null;
     }
+  };
+
+  // Brush painting function
+  const paintWithBrush = (centerRow: number, centerCol: number) => {
+    if (!isBrushMode || !isSilhouetteLocked || !hasSilhouette || !silhouetteDataRef.current) {
+      return;
+    }
+
+    const newPixels = pixels.map(row => [...row]);
+    const halfBrush = Math.floor(brushSize / 2);
+    
+    // Paint in a square around the center pixel
+    for (let row = centerRow - halfBrush; row <= centerRow + halfBrush; row++) {
+      for (let col = centerCol - halfBrush; col <= centerCol + halfBrush; col++) {
+        // Check bounds
+        if (row >= 0 && row < CANVAS_SIZE && col >= 0 && col < CANVAS_SIZE) {
+          // Check if this pixel is part of the silhouette (non-transparent)
+          const silhouetteRow = row - silhouettePosition.y;
+          const silhouetteCol = col - silhouettePosition.x;
+          
+          if (silhouetteRow >= 0 && silhouetteRow < 20 && 
+              silhouetteCol >= 0 && silhouetteCol < 20) {
+            const silhouettePixel = silhouetteDataRef.current[silhouetteRow]?.[silhouetteCol];
+            
+            // Only paint if the silhouette pixel is not transparent
+            if (silhouettePixel && silhouettePixel !== 'transparent') {
+              // Use the actual color from the silhouette, not the selected color
+              newPixels[row][col] = silhouettePixel;
+            }
+          }
+        }
+      }
+    }
+    
+    setPixels(newPixels);
   };
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -851,10 +890,31 @@ export function Canvas({ eventId, selectedColor = '#000000' }: CanvasProps) {
         return;
       }
       
-      // Paint the pixel with selected color (desktop only)
-      const newPixels = pixels.map(row => [...row]);
-      newPixels[row][col] = selectedColor;
-      setPixels(newPixels);
+      // Use brush tool if enabled and template is locked, otherwise single pixel
+      if (isBrushMode && isSilhouetteLocked && hasSilhouette && silhouetteDataRef.current) {
+        // Check if we're over the silhouette area
+        const silhouetteLeft = silhouettePosition.x;
+        const silhouetteTop = silhouettePosition.y;
+        const silhouetteRight = silhouetteLeft + 20;
+        const silhouetteBottom = silhouetteTop + 20;
+
+        if (col >= silhouetteLeft && col < silhouetteRight && 
+            row >= silhouetteTop && row < silhouetteBottom) {
+          // Check if the pixel is not transparent in the silhouette
+          const silhouetteRow = row - silhouetteTop;
+          const silhouetteCol = col - silhouetteLeft;
+          const silhouettePixel = silhouetteDataRef.current[silhouetteRow]?.[silhouetteCol];
+          
+          if (silhouettePixel && silhouettePixel !== 'transparent') {
+            paintWithBrush(row, col);
+          }
+        }
+      } else {
+        // Paint the pixel with selected color (desktop only)
+        const newPixels = pixels.map(row => [...row]);
+        newPixels[row][col] = selectedColor;
+        setPixels(newPixels);
+      }
     }
     
     // Reset hasMoved for next interaction
@@ -894,7 +954,32 @@ export function Canvas({ eventId, selectedColor = '#000000' }: CanvasProps) {
         }
       }
 
-      // Start panning if not clicking on silhouette
+      // Handle brush painting on mouse down - only when over silhouette area
+      if (isBrushMode && isSilhouetteLocked && hasSilhouette && silhouetteDataRef.current) {
+        // Check if we're over the silhouette area
+        const silhouetteLeft = silhouettePosition.x;
+        const silhouetteTop = silhouettePosition.y;
+        const silhouetteRight = silhouetteLeft + 20;
+        const silhouetteBottom = silhouetteTop + 20;
+
+        if (col >= silhouetteLeft && col < silhouetteRight && 
+            row >= silhouetteTop && row < silhouetteBottom) {
+          // Check if the pixel is not transparent in the silhouette
+          const silhouetteRow = row - silhouetteTop;
+          const silhouetteCol = col - silhouetteLeft;
+          const silhouettePixel = silhouetteDataRef.current[silhouetteRow]?.[silhouetteCol];
+          
+          if (silhouettePixel && silhouettePixel !== 'transparent') {
+            paintWithBrush(row, col);
+            setIsPaintingOnSilhouette(true);
+            setIsBrushDragging(true);
+            // Don't start panning when painting on silhouette
+            return;
+          }
+        }
+      }
+
+      // Start panning if not clicking on silhouette or painting
       setIsPanning(true);
       setHasMoved(false);
       setMouseDownPoint({ x: e.clientX, y: e.clientY });
@@ -918,6 +1003,9 @@ export function Canvas({ eventId, selectedColor = '#000000' }: CanvasProps) {
     const col = Math.floor(mouseX / pixelSize);
     const row = Math.floor(mouseY / pixelSize);
     
+    // Set cursor based on current state
+    canvas.style.cursor = isPanning ? 'grabbing' : 'crosshair';
+    
     if (isDraggingSilhouette) {
       // Drag silhouette
       const newX = Math.max(0, Math.min(CANVAS_SIZE - 20, col - dragStartPosition.x));
@@ -926,7 +1014,31 @@ export function Canvas({ eventId, selectedColor = '#000000' }: CanvasProps) {
       return;
     }
     
-    if (isPanning) {
+    // Handle brush painting during drag - only when brush mode is active and template is locked
+    if (isBrushDragging && isBrushMode && isSilhouetteLocked && hasSilhouette) {
+      // Check if we're over the silhouette area
+      const silhouetteLeft = silhouettePosition.x;
+      const silhouetteTop = silhouettePosition.y;
+      const silhouetteRight = silhouetteLeft + 20;
+      const silhouetteBottom = silhouetteTop + 20;
+
+      if (col >= silhouetteLeft && col < silhouetteRight && 
+          row >= silhouetteTop && row < silhouetteBottom) {
+        // Check if the pixel is not transparent in the silhouette
+        const silhouetteRow = row - silhouetteTop;
+        const silhouetteCol = col - silhouetteLeft;
+        const silhouettePixel = silhouetteDataRef.current?.[silhouetteRow]?.[silhouetteCol];
+        
+        if (silhouettePixel && silhouettePixel !== 'transparent') {
+          paintWithBrush(row, col);
+          setIsPaintingOnSilhouette(true);
+        }
+      }
+      // Keep panning disabled while brush is active
+      setIsPaintingOnSilhouette(true);
+    }
+    
+    if (isPanning && !isPaintingOnSilhouette) {
       const deltaX = e.clientX - lastPanPoint.x;
       const deltaY = e.clientY - lastPanPoint.y;
       
@@ -972,6 +1084,8 @@ export function Canvas({ eventId, selectedColor = '#000000' }: CanvasProps) {
   const handleMouseUp = () => {
     setIsPanning(false);
     setIsDraggingSilhouette(false);
+    setIsPaintingOnSilhouette(false);
+    setIsBrushDragging(false);
     // Don't reset hasMoved here - let the click handler decide
   };
 
@@ -979,7 +1093,14 @@ export function Canvas({ eventId, selectedColor = '#000000' }: CanvasProps) {
   const handleMouseLeave = () => {
     setIsPanning(false);
     setIsDraggingSilhouette(false);
+    setIsPaintingOnSilhouette(false);
+    setIsBrushDragging(false);
     setHoveredPixel(null);
+    
+    // Reset cursor
+    if (canvasRef.current) {
+      canvasRef.current.style.cursor = 'crosshair';
+    }
   };
 
   // Optimized touch event handlers for mobile
@@ -1222,6 +1343,20 @@ export function Canvas({ eventId, selectedColor = '#000000' }: CanvasProps) {
             className="bg-red-500 text-white px-4 py-2 rounded-lg shadow-lg hover:bg-red-600 transition-colors font-medium w-32"
           >
             Clear Image
+          </button>
+        )}
+
+        {/* Brush Tool Button - only show if silhouette is locked */}
+        {hasSilhouette && isSilhouetteLocked && (
+          <button
+            onClick={() => setIsBrushMode(!isBrushMode)}
+            className={`px-4 py-2 rounded-lg shadow-lg transition-colors font-medium w-32 ${
+              isBrushMode 
+                ? 'bg-green-600 text-white hover:bg-green-700' 
+                : 'bg-green-500 text-white hover:bg-green-600'
+            }`}
+          >
+            {isBrushMode ? 'Brush Active' : 'Brush Tool'}
           </button>
         )}
       </div>
