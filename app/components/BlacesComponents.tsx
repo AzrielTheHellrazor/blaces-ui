@@ -118,9 +118,10 @@ export function CreateEvent() {
       console.error('Error creating game:', error);
       
       // Provide more specific error messages
-      if (error.message.includes('Network error')) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      if (errorMessage.includes('Network error')) {
         setError('Unable to connect to the server. Please check your internet connection and try again.');
-      } else if (error.message.includes('API request failed')) {
+      } else if (errorMessage.includes('API request failed')) {
         setError('Server error occurred. Please try again later.');
       } else {
         setError('Failed to create event. Please try again.');
@@ -329,11 +330,12 @@ export function JoinEvent() {
       console.error('Error validating game ID:', error);
       
       // Provide more specific error messages
-      if (error.message.includes('Network error')) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      if (errorMessage.includes('Network error')) {
         setError('Unable to connect to the server. Please check your internet connection and try again.');
-      } else if (error.message.includes('404') || error.message.includes('Game not found')) {
+      } else if (errorMessage.includes('404') || errorMessage.includes('Game not found')) {
         setError('Event not found. Please check the event ID and try again.');
-      } else if (error.message.includes('API request failed')) {
+      } else if (errorMessage.includes('API request failed')) {
         setError('Server error occurred. Please try again later.');
       } else {
         setError('Invalid event ID. Please check and try again.');
@@ -426,7 +428,6 @@ export function Canvas({ eventId, selectedColor = '#000000' }: CanvasProps) {
   const [isBrushDragging, setIsBrushDragging] = useState(false);
   const [gameInfo, setGameInfo] = useState<GameInfo | null>(null);
   const [isSyncing, setIsSyncing] = useState(false);
-  const [lastSyncTime, setLastSyncTime] = useState<number>(0);
   const [error, setError] = useState<string>("");
   const brushSize = 3; // Fixed brush size
   
@@ -638,58 +639,7 @@ export function Canvas({ eventId, selectedColor = '#000000' }: CanvasProps) {
     return () => clearInterval(interval);
   }, [isMobile, getScreenCenterPixel]);
 
-  // API sync functions
-  const syncWithAPI = useCallback(async () => {
-    if (!gameInfo || isSyncing) return;
-    
-    setIsSyncing(true);
-    try {
-      const gameData = await blacesAPI.getGameData(gameInfo.id);
-      
-      // Convert API grid data to our pixel format
-      const apiPixels = Array(CANVAS_SIZE).fill(null).map(() => Array(CANVAS_SIZE).fill('#FFFFFF'));
-      
-      gameData.grid.forEach((pixel, index) => {
-        const row = Math.floor(index / CANVAS_SIZE);
-        const col = index % CANVAS_SIZE;
-        if (row < CANVAS_SIZE && col < CANVAS_SIZE) {
-          const hexColor = `#${pixel.r.toString(16).padStart(2, '0')}${pixel.g.toString(16).padStart(2, '0')}${pixel.b.toString(16).padStart(2, '0')}`;
-          apiPixels[row][col] = hexColor;
-        }
-      });
-      
-      setPixels(apiPixels);
-      setLastSyncTime(Date.now());
-      setError(""); // Clear any previous errors on successful sync
-    } catch (error) {
-      console.error('Failed to sync with API:', error);
-      setError('Failed to sync with API. Please try again.');
-    } finally {
-      setIsSyncing(false);
-    }
-  }, [gameInfo, isSyncing, CANVAS_SIZE]);
 
-  const sendPixelToAPI = useCallback(async (x: number, y: number, color: string) => {
-    if (!gameInfo) return;
-    
-    try {
-      // Convert hex color to RGB
-      const hex = color.replace('#', '');
-      const r = parseInt(hex.substr(0, 2), 16);
-      const g = parseInt(hex.substr(2, 2), 16);
-      const b = parseInt(hex.substr(4, 2), 16);
-      
-      await blacesAPI.putPixel(gameInfo.id, {
-        x,
-        y,
-        pixel: { r, g, b }
-      });
-      setError(""); // Clear any previous errors on successful pixel placement
-    } catch (error) {
-      console.error('Failed to send pixel to API:', error);
-      setError('Failed to place pixel. Please try again.');
-    }
-  }, [gameInfo]);
 
   // Initialize canvas with API data
   useEffect(() => {
@@ -722,7 +672,6 @@ export function Canvas({ eventId, selectedColor = '#000000' }: CanvasProps) {
               });
               
               setPixels(apiPixels);
-              setLastSyncTime(Date.now());
               setError("");
             } catch (error) {
               console.error('Failed to sync with API:', error);
@@ -756,7 +705,6 @@ export function Canvas({ eventId, selectedColor = '#000000' }: CanvasProps) {
               });
               
               setPixels(apiPixels);
-              setLastSyncTime(Date.now());
               setError("");
             } catch (error) {
               console.error('Failed to sync with API:', error);

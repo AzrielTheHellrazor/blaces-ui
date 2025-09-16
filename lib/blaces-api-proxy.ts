@@ -104,8 +104,8 @@ export class BlacesAPIProxyClient {
         );
       }
       
-      throw new BlaceAPIError(
-        `Unexpected error: ${error.message}`,
+      throw new BlacesAPIError(
+        `Unexpected error: ${error instanceof Error ? error.message : String(error)}`,
         0,
         endpoint
       );
