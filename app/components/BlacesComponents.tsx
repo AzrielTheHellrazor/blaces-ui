@@ -6,17 +6,18 @@ import { Button } from "./DemoComponents";
 import { Icon } from "./DemoComponents";
 import { Card } from "./DemoComponents";
 import QRCode from "qrcode";
+import { blaceAPI, type GameInfo } from "../../lib/blace-api-proxy";
 
 
-// Utility function to generate random event code
-function generateEventCode(): string {
-  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
-  let result = '';
-  for (let i = 0; i < 8; i++) {
-    result += chars.charAt(Math.floor(Math.random() * chars.length));
-  }
-  return result;
-}
+// Utility function to generate random event code (kept for potential future use)
+// function generateEventCode(): string {
+//   const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+//   let result = '';
+//   for (let i = 0; i < 8; i++) {
+//     result += chars.charAt(Math.floor(Math.random() * chars.length));
+//   }
+//   return result;
+// }
 
 
 
@@ -65,40 +66,68 @@ export function CreateEvent() {
   const [eventCode, setEventCode] = useState("");
   const [showQR, setShowQR] = useState(false);
   const [qrCodeDataUrl, setQrCodeDataUrl] = useState("");
+  const [isCreating, setIsCreating] = useState(false);
+  const [error, setError] = useState("");
 
   const handleCreate = async () => {
     if (!eventName.trim()) return;
     
-    const code = generateEventCode();
-    setEventCode(code);
+    setIsCreating(true);
+    setError("");
     
-    // Save event metadata with fixed canvas size
-    const eventMetadata = {
-      name: eventName,
-      description: eventDescription,
-      canvasSize: 200, // Fixed canvas size
-      createdAt: new Date().toISOString()
-    };
-    localStorage.setItem(`blaces-event-${code}`, JSON.stringify(eventMetadata));
-    
-    // Generate QR code
     try {
-      // Use correct Farcaster mini app URL format
-      const farcasterUrl = `https://farcaster.xyz/miniapps/nJEe4IGqnsUT/blaces/event/${code}`;
-      const qrDataUrl = await QRCode.toDataURL(farcasterUrl, {
-        width: 128,
-        margin: 2,
-        color: {
-          dark: '#000000',
-          light: '#FFFFFF'
-        }
+      // Create game using Blace API
+      const game = await blaceAPI.createGame({
+        name: eventName,
+        width: 200, // 200x200 grid
+        height: 200
       });
-      setQrCodeDataUrl(qrDataUrl);
+      
+      // Use the game ID as the event code
+      setEventCode(game.id);
+      
+      // Save event metadata with game info
+      const eventMetadata = {
+        name: eventName,
+        description: eventDescription,
+        gameId: game.id,
+        canvasSize: 200, // 200x200 grid
+        createdAt: new Date().toISOString()
+      };
+      localStorage.setItem(`blaces-event-${game.id}`, JSON.stringify(eventMetadata));
+      
+      // Generate QR code
+      try {
+        // Use correct Farcaster mini app URL format
+        const farcasterUrl = `https://farcaster.xyz/miniapps/nJEe4IGqnsUT/blaces/event/${game.id}`;
+        const qrDataUrl = await QRCode.toDataURL(farcasterUrl, {
+          width: 128,
+          margin: 2,
+          color: {
+            dark: '#000000',
+            light: '#FFFFFF'
+          }
+        });
+        setQrCodeDataUrl(qrDataUrl);
+      } catch (error) {
+        console.error('Error generating QR code:', error);
+      }
+      
+      setShowQR(true);
     } catch (error) {
-      console.error('Error generating QR code:', error);
+      console.error('Error creating game:', error);
+      
+      // Provide more specific error messages
+      if (error.message.includes('Network error')) {
+        setError('Unable to connect to the server. Please check your internet connection and try again.');
+      } else if (error.message.includes('API request failed')) {
+        setError('Server error occurred. Please try again later.');
+      } else {
+        setError('Failed to create event. Please try again.');
+      }
+    } finally {
+      setIsCreating(false);
     }
-    
-    setShowQR(true);
   };
 
 
@@ -141,9 +170,15 @@ export function CreateEvent() {
                 Canvas Size
               </label>
               <div className="w-full px-3 py-2 bg-card-bg border border-card-border rounded-lg text-foreground text-base">
-                200x200 (Fixed Size)
+                20x20 (API Standard)
               </div>
             </div>
+            
+            {error && (
+              <div className="text-red-500 text-sm text-center bg-red-50 p-3 rounded-lg border border-red-200">
+                {error}
+              </div>
+            )}
             
             <div className="flex space-x-3">
               <Button
@@ -154,15 +189,16 @@ export function CreateEvent() {
                   }
                 }}
                 className="flex-1 h-12"
+                disabled={isCreating}
               >
                 Cancel
               </Button>
               <Button
                 onClick={handleCreate}
-                disabled={!eventName.trim()}
+                disabled={!eventName.trim() || isCreating}
                 className="flex-1 h-12"
               >
-                Create
+                {isCreating ? 'Creating...' : 'Create'}
               </Button>
             </div>
           </div>
@@ -269,11 +305,41 @@ export function CreateEvent() {
 
 export function JoinEvent() {
   const [eventId, setEventId] = useState("");
+  const [isValidating, setIsValidating] = useState(false);
+  const [error, setError] = useState("");
 
-  const handleJoin = () => {
+  const handleJoin = async () => {
     if (!eventId.trim()) return;
-    if (typeof window !== 'undefined') {
-      window.location.href = `/event/${eventId.trim()}`;
+    
+    setIsValidating(true);
+    setError("");
+    
+    try {
+      // Validate game ID with API
+      const gameInfo = await blaceAPI.getGameInfo(eventId.trim());
+      
+      // Save game info to localStorage for the event page
+      localStorage.setItem(`blaces-game-${eventId.trim()}`, JSON.stringify(gameInfo));
+      
+      // Navigate to event page
+      if (typeof window !== 'undefined') {
+        window.location.href = `/event/${eventId.trim()}`;
+      }
+    } catch (error) {
+      console.error('Error validating game ID:', error);
+      
+      // Provide more specific error messages
+      if (error.message.includes('Network error')) {
+        setError('Unable to connect to the server. Please check your internet connection and try again.');
+      } else if (error.message.includes('404') || error.message.includes('Game not found')) {
+        setError('Event not found. Please check the event ID and try again.');
+      } else if (error.message.includes('API request failed')) {
+        setError('Server error occurred. Please try again later.');
+      } else {
+        setError('Invalid event ID. Please check and try again.');
+      }
+    } finally {
+      setIsValidating(false);
     }
   };
 
@@ -291,32 +357,38 @@ export function JoinEvent() {
               type="text"
               value={eventId}
               onChange={(e) => setEventId(e.target.value)}
-              placeholder="Enter 8-character event code..."
-              maxLength={8}
+              placeholder="Enter game ID (UUID format)..."
               className="w-full px-3 py-2 bg-card-bg border border-card-border rounded-lg text-foreground placeholder-foreground-muted focus:outline-none focus:ring-1 focus:ring-accent font-mono text-center text-base sm:text-lg"
             />
           </div>
           
-                      <div className="flex space-x-3">
-              <Button
-                variant="outline"
-                onClick={() => {
-                  if (typeof window !== 'undefined') {
-                    window.location.href = '/';
-                  }
-                }}
-                className="flex-1 h-12"
-              >
-                Cancel
-              </Button>
-              <Button
-                onClick={handleJoin}
-                disabled={!eventId.trim() || eventId.length !== 8}
-                className="flex-1 h-12"
-              >
-                Join Event
-              </Button>
+          {error && (
+            <div className="text-red-500 text-sm text-center bg-red-50 p-3 rounded-lg border border-red-200">
+              {error}
             </div>
+          )}
+          
+          <div className="flex space-x-3">
+            <Button
+              variant="outline"
+              onClick={() => {
+                if (typeof window !== 'undefined') {
+                  window.location.href = '/';
+                }
+              }}
+              className="flex-1 h-12"
+              disabled={isValidating}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleJoin}
+              disabled={!eventId.trim() || isValidating}
+              className="flex-1 h-12"
+            >
+              {isValidating ? 'Validating...' : 'Join Event'}
+            </Button>
+          </div>
         </div>
       </Card>
     </div>
@@ -329,7 +401,7 @@ type CanvasProps = {
 };
 
 export function Canvas({ eventId, selectedColor = '#000000' }: CanvasProps) {
-  const CANVAS_SIZE = 200; // Fixed canvas size
+  const CANVAS_SIZE = 200; // 200x200 grid
   const [pixels, setPixels] = useState<string[][]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [zoom, setZoom] = useState(1);
@@ -352,12 +424,17 @@ export function Canvas({ eventId, selectedColor = '#000000' }: CanvasProps) {
   const [isBrushMode, setIsBrushMode] = useState(false);
   const [isPaintingOnSilhouette, setIsPaintingOnSilhouette] = useState(false);
   const [isBrushDragging, setIsBrushDragging] = useState(false);
+  const [gameInfo, setGameInfo] = useState<GameInfo | null>(null);
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [lastSyncTime, setLastSyncTime] = useState<number>(0);
+  const [error, setError] = useState<string>("");
   const brushSize = 3; // Fixed brush size
   
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const lastDrawnPixels = useRef<Map<string, string>>(new Map()); // Track last drawn pixel colors
   const silhouetteDataRef = useRef<string[][] | null>(null); // Store silhouette data
+  // const syncTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
 
 
@@ -561,123 +638,151 @@ export function Canvas({ eventId, selectedColor = '#000000' }: CanvasProps) {
     return () => clearInterval(interval);
   }, [isMobile, getScreenCenterPixel]);
 
-  // Initialize canvas with fixed size
-  useEffect(() => {
-    console.log(`Canvas size for event ${eventId}: ${CANVAS_SIZE}x${CANVAS_SIZE}`);
+  // API sync functions
+  const syncWithAPI = useCallback(async () => {
+    if (!gameInfo || isSyncing) return;
     
-    const savedPixels = localStorage.getItem(`blaces-${eventId}`);
-    if (savedPixels) {
+    setIsSyncing(true);
+    try {
+      const gameData = await blaceAPI.getGameData(gameInfo.id);
+      
+      // Convert API grid data to our pixel format
+      const apiPixels = Array(CANVAS_SIZE).fill(null).map(() => Array(CANVAS_SIZE).fill('#FFFFFF'));
+      
+      gameData.grid.forEach((pixel, index) => {
+        const row = Math.floor(index / CANVAS_SIZE);
+        const col = index % CANVAS_SIZE;
+        if (row < CANVAS_SIZE && col < CANVAS_SIZE) {
+          const hexColor = `#${pixel.r.toString(16).padStart(2, '0')}${pixel.g.toString(16).padStart(2, '0')}${pixel.b.toString(16).padStart(2, '0')}`;
+          apiPixels[row][col] = hexColor;
+        }
+      });
+      
+      setPixels(apiPixels);
+      setLastSyncTime(Date.now());
+      setError(""); // Clear any previous errors on successful sync
+    } catch (error) {
+      console.error('Failed to sync with API:', error);
+      setError('Failed to sync with API. Please try again.');
+    } finally {
+      setIsSyncing(false);
+    }
+  }, [gameInfo, isSyncing, CANVAS_SIZE]);
+
+  const sendPixelToAPI = useCallback(async (x: number, y: number, color: string) => {
+    if (!gameInfo) return;
+    
+    try {
+      // Convert hex color to RGB
+      const hex = color.replace('#', '');
+      const r = parseInt(hex.substr(0, 2), 16);
+      const g = parseInt(hex.substr(2, 2), 16);
+      const b = parseInt(hex.substr(4, 2), 16);
+      
+      await blaceAPI.putPixel(gameInfo.id, {
+        x,
+        y,
+        pixel: { r, g, b }
+      });
+      setError(""); // Clear any previous errors on successful pixel placement
+    } catch (error) {
+      console.error('Failed to send pixel to API:', error);
+      setError('Failed to place pixel. Please try again.');
+    }
+  }, [gameInfo]);
+
+  // Initialize canvas with API data
+  useEffect(() => {
+    const initializeCanvas = async () => {
+      console.log(`Initializing canvas for event ${eventId}: ${CANVAS_SIZE}x${CANVAS_SIZE}`);
+      
       try {
-        const compressedData = JSON.parse(savedPixels);
-        
-        // Check if it's compressed data or old format
-        if (Array.isArray(compressedData) && compressedData.length > 0 && compressedData[0].pixels) {
-          // Compressed format - reconstruct canvas
-          const emptyCanvas = Array(CANVAS_SIZE).fill(null).map(() => Array(CANVAS_SIZE).fill('#FFFFFF'));
+        // Try to get game info from localStorage first
+        const savedGameInfo = localStorage.getItem(`blaces-game-${eventId}`);
+        if (savedGameInfo) {
+          const game = JSON.parse(savedGameInfo);
+          setGameInfo(game);
           
-          compressedData.forEach((rowData: { row: number; pixels: Array<{ col: number; color: string }> }) => {
-            if (rowData.row >= 0 && rowData.row < CANVAS_SIZE) {
-              rowData.pixels.forEach((pixelData: { col: number; color: string }) => {
-                if (pixelData.col >= 0 && pixelData.col < CANVAS_SIZE) {
-                  // Convert short color format back to full hex
-                  let fullColor = pixelData.color;
-                  if (pixelData.color === '0') {
-                    fullColor = '#000000';
-                  } else if (pixelData.color === '1') {
-                    fullColor = '#FFFFFF';
-                  } else if (!pixelData.color.startsWith('#')) {
-                    fullColor = `#${pixelData.color}`;
-                  }
-                  emptyCanvas[rowData.row][pixelData.col] = fullColor;
+          // Load from API
+          if (game && !isSyncing) {
+            setIsSyncing(true);
+            try {
+              const gameData = await blaceAPI.getGameData(game.id);
+              
+              // Convert API grid data to our pixel format
+              const apiPixels = Array(CANVAS_SIZE).fill(null).map(() => Array(CANVAS_SIZE).fill('#FFFFFF'));
+              
+              gameData.grid.forEach((pixel, index) => {
+                const row = Math.floor(index / CANVAS_SIZE);
+                const col = index % CANVAS_SIZE;
+                if (row < CANVAS_SIZE && col < CANVAS_SIZE) {
+                  const hexColor = `#${pixel.r.toString(16).padStart(2, '0')}${pixel.g.toString(16).padStart(2, '0')}${pixel.b.toString(16).padStart(2, '0')}`;
+                  apiPixels[row][col] = hexColor;
                 }
               });
+              
+              setPixels(apiPixels);
+              setLastSyncTime(Date.now());
+              setError("");
+            } catch (error) {
+              console.error('Failed to sync with API:', error);
+              setError('Failed to sync with API. Please try again.');
+            } finally {
+              setIsSyncing(false);
             }
-          });
-          
-          setPixels(emptyCanvas);
+          }
         } else {
-          // Old format - direct array
-          setPixels(compressedData);
+          // Try to get game info from API
+          const game = await blaceAPI.getGameInfo(eventId);
+          setGameInfo(game);
+          localStorage.setItem(`blaces-game-${eventId}`, JSON.stringify(game));
+          
+          // Load from API
+          if (game && !isSyncing) {
+            setIsSyncing(true);
+            try {
+              const gameData = await blaceAPI.getGameData(game.id);
+              
+              // Convert API grid data to our pixel format
+              const apiPixels = Array(CANVAS_SIZE).fill(null).map(() => Array(CANVAS_SIZE).fill('#FFFFFF'));
+              
+              gameData.grid.forEach((pixel, index) => {
+                const row = Math.floor(index / CANVAS_SIZE);
+                const col = index % CANVAS_SIZE;
+                if (row < CANVAS_SIZE && col < CANVAS_SIZE) {
+                  const hexColor = `#${pixel.r.toString(16).padStart(2, '0')}${pixel.g.toString(16).padStart(2, '0')}${pixel.b.toString(16).padStart(2, '0')}`;
+                  apiPixels[row][col] = hexColor;
+                }
+              });
+              
+              setPixels(apiPixels);
+              setLastSyncTime(Date.now());
+              setError("");
+            } catch (error) {
+              console.error('Failed to sync with API:', error);
+              setError('Failed to sync with API. Please try again.');
+            } finally {
+              setIsSyncing(false);
+            }
+          }
         }
       } catch (error) {
-        console.warn('Failed to load canvas data:', error);
-        // Initialize empty canvas on error
+        console.error('Failed to initialize canvas:', error);
+        // No fallback - game must be played through API only
+        setError('Failed to load game from API. Please check your connection and try again.');
         const emptyCanvas = Array(CANVAS_SIZE).fill(null).map(() => Array(CANVAS_SIZE).fill('#FFFFFF'));
         setPixels(emptyCanvas);
       }
-    } else {
-      // Initialize empty canvas
-      const emptyCanvas = Array(CANVAS_SIZE).fill(null).map(() => Array(CANVAS_SIZE).fill('#FFFFFF'));
-      setPixels(emptyCanvas);
-    }
-    
-    // Reset pan to center
-    setPan({ x: 0, y: 0 });
-    
-    setIsLoading(false);
-  }, [eventId]);
-
-  // Save pixels to localStorage with debouncing and error handling
-  useEffect(() => {
-    if (pixels.length > 0) {
-      const timeoutId = setTimeout(() => {
-        try {
-          // Compress data by only saving non-white pixels with better compression
-          const compressedData = pixels.map((row, rowIndex) => {
-            const nonWhitePixels = row.map((color, colIndex) => {
-              if (color !== '#FFFFFF') {
-                // Use shorter color format if possible
-                const shortColor = color === '#000000' ? '0' : 
-                                  color === '#FFFFFF' ? '1' : 
-                                  color.replace('#', '');
-                return { col: colIndex, color: shortColor };
-              }
-              return null;
-            }).filter(pixel => pixel !== null);
-            return nonWhitePixels.length > 0 ? { row: rowIndex, pixels: nonWhitePixels } : null;
-          }).filter(row => row !== null);
-          
-          localStorage.setItem(`blaces-${eventId}`, JSON.stringify(compressedData));
-        } catch (error) {
-          console.warn('Failed to save canvas data:', error);
-          // More aggressive cleanup
-          try {
-            const keys = Object.keys(localStorage);
-            const blacesKeys = keys.filter(key => key.startsWith('blaces-'));
-            
-            // Clear all blaces data if quota exceeded
-            if (blacesKeys.length > 0) {
-              blacesKeys.forEach(key => localStorage.removeItem(key));
-              console.log('Cleared all blaces data due to quota exceeded');
-              
-              // Try saving current data only
-              const compressedData = pixels.map((row, rowIndex) => {
-                const nonWhitePixels = row.map((color, colIndex) => {
-                  if (color !== '#FFFFFF') {
-                    return { col: colIndex, color };
-                  }
-                  return null;
-                }).filter(pixel => pixel !== null);
-                return nonWhitePixels.length > 0 ? { row: rowIndex, pixels: nonWhitePixels } : null;
-              }).filter(row => row !== null);
-              
-              // Only save if data is not too large
-              const dataSize = JSON.stringify(compressedData).length;
-              if (dataSize < 5000000) { // 5MB limit
-                localStorage.setItem(`blaces-${eventId}`, JSON.stringify(compressedData));
-              } else {
-                console.warn('Canvas data too large, not saving');
-              }
-            }
-          } catch (clearError) {
-            console.error('Failed to clear localStorage:', clearError);
-          }
-        }
-      }, 1000); // Save after 1 second of no changes
       
-      return () => clearTimeout(timeoutId);
-    }
-  }, [pixels, eventId]);
+      setPan({ x: 0, y: 0 });
+      setIsLoading(false);
+    };
+    
+    initializeCanvas();
+  }, [eventId]); // Remove syncWithAPI from dependencies to prevent infinite loop
+
+  // No localStorage saving - all data must go through API
+  // This ensures the game is played only through the API
 
 
 
@@ -826,10 +931,35 @@ export function Canvas({ eventId, selectedColor = '#000000' }: CanvasProps) {
       if (newPixels[screenCenter.row] && newPixels[screenCenter.row][screenCenter.col] !== undefined) {
         newPixels[screenCenter.row][screenCenter.col] = selectedColor;
         setPixels(newPixels);
+        
+        // Send to API
+        if (gameInfo) {
+          try {
+            // Convert hex color to RGB
+            const hex = selectedColor.replace('#', '');
+            const r = parseInt(hex.substr(0, 2), 16);
+            const g = parseInt(hex.substr(2, 2), 16);
+            const b = parseInt(hex.substr(4, 2), 16);
+            
+            blaceAPI.putPixel(gameInfo.id, {
+              x: screenCenter.col,
+              y: screenCenter.row,
+              pixel: { r, g, b }
+            }).then(() => {
+              setError(""); // Clear any previous errors on successful pixel placement
+            }).catch((error) => {
+              console.error('Failed to send pixel to API:', error);
+              setError('Failed to place pixel. Please try again.');
+            });
+          } catch (error) {
+            console.error('Failed to send pixel to API:', error);
+            setError('Failed to place pixel. Please try again.');
+          }
+        }
       }
       setLastSelectedColor(selectedColor);
     }
-  }, [selectedColor, isMobile, lastSelectedColor, getScreenCenterPixel, pixels]);
+  }, [selectedColor, isMobile, lastSelectedColor, getScreenCenterPixel, pixels, gameInfo]); // Remove sendPixelToAPI from dependencies
 
 
 
@@ -914,6 +1044,31 @@ export function Canvas({ eventId, selectedColor = '#000000' }: CanvasProps) {
         const newPixels = pixels.map(row => [...row]);
         newPixels[row][col] = selectedColor;
         setPixels(newPixels);
+        
+        // Send to API
+        if (gameInfo) {
+          try {
+            // Convert hex color to RGB
+            const hex = selectedColor.replace('#', '');
+            const r = parseInt(hex.substr(0, 2), 16);
+            const g = parseInt(hex.substr(2, 2), 16);
+            const b = parseInt(hex.substr(4, 2), 16);
+            
+            blaceAPI.putPixel(gameInfo.id, {
+              x: col,
+              y: row,
+              pixel: { r, g, b }
+            }).then(() => {
+              setError(""); // Clear any previous errors on successful pixel placement
+            }).catch((error) => {
+              console.error('Failed to send pixel to API:', error);
+              setError('Failed to place pixel. Please try again.');
+            });
+          } catch (error) {
+            console.error('Failed to send pixel to API:', error);
+            setError('Failed to place pixel. Please try again.');
+          }
+        }
       }
     }
     
@@ -1376,6 +1531,16 @@ export function Canvas({ eventId, selectedColor = '#000000' }: CanvasProps) {
     <div className="w-full h-screen relative overflow-hidden bg-gray-100" style={{ transformStyle: 'preserve-3d' }}>
       {/* Button Container */}
       <div className="absolute top-4 left-4 z-10 flex flex-col space-y-2">
+        
+        
+        {/* Error Display */}
+        {error && (
+          <div className="bg-red-100 border border-red-300 text-red-700 px-3 py-2 rounded-lg shadow-lg text-xs">
+            <div className="font-medium">API Error</div>
+            <div>{error}</div>
+          </div>
+        )}
+        
         {/* Upload Button - only show if no silhouette exists */}
         {!hasSilhouette && (
           <button
@@ -1487,3 +1652,4 @@ export function Canvas({ eventId, selectedColor = '#000000' }: CanvasProps) {
     </div>
   );
 }
+
