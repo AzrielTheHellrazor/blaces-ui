@@ -6,7 +6,7 @@ import { Button } from "./DemoComponents";
 import { Icon } from "./DemoComponents";
 import { Card } from "./DemoComponents";
 import QRCode from "qrcode";
-import { blaceAPI, type GameInfo } from "../../lib/blace-api-proxy";
+import { blacesAPI, type GameInfo } from "../../lib/blaces-api-proxy";
 
 
 // Utility function to generate random event code (kept for potential future use)
@@ -76,8 +76,8 @@ export function CreateEvent() {
     setError("");
     
     try {
-      // Create game using Blace API
-      const game = await blaceAPI.createGame({
+      // Create game using Blaces API
+      const game = await blacesAPI.createGame({
         name: eventName,
         width: 200, // 200x200 grid
         height: 200
@@ -170,7 +170,7 @@ export function CreateEvent() {
                 Canvas Size
               </label>
               <div className="w-full px-3 py-2 bg-card-bg border border-card-border rounded-lg text-foreground text-base">
-                20x20 (API Standard)
+                200x200
               </div>
             </div>
             
@@ -316,7 +316,7 @@ export function JoinEvent() {
     
     try {
       // Validate game ID with API
-      const gameInfo = await blaceAPI.getGameInfo(eventId.trim());
+      const gameInfo = await blacesAPI.getGameInfo(eventId.trim());
       
       // Save game info to localStorage for the event page
       localStorage.setItem(`blaces-game-${eventId.trim()}`, JSON.stringify(gameInfo));
@@ -539,34 +539,34 @@ export function Canvas({ eventId, selectedColor = '#000000' }: CanvasProps) {
     if (file) {
       console.log('Processing image:', file.name);
       
-      // Process image to 20x20 pixels
+      // Process image to 200x200 pixels
       const img = new window.Image();
       const canvas = document.createElement('canvas');
       const ctx = canvas.getContext('2d');
       
       if (ctx) {
-        canvas.width = 20;
-        canvas.height = 20;
+        canvas.width = 200;
+        canvas.height = 200;
         
         img.onload = () => {
           console.log('Image loaded, processing...');
           
           // Clear canvas
-          ctx.clearRect(0, 0, 20, 20);
+          ctx.clearRect(0, 0, 200, 200);
           
-          // Draw image scaled to 20x20
-          ctx.drawImage(img, 0, 0, 20, 20);
+          // Draw image scaled to 200x200
+          ctx.drawImage(img, 0, 0, 200, 200);
           
           // Get pixel data
-          const imageData = ctx.getImageData(0, 0, 20, 20);
+          const imageData = ctx.getImageData(0, 0, 200, 200);
           const data = imageData.data;
           
           // Convert to pixel array
           const pixelData: string[][] = [];
-          for (let y = 0; y < 20; y++) {
+          for (let y = 0; y < 200; y++) {
             const row: string[] = [];
-            for (let x = 0; x < 20; x++) {
-              const index = (y * 20 + x) * 4;
+            for (let x = 0; x < 200; x++) {
+              const index = (y * 200 + x) * 4;
               const r = data[index];
               const g = data[index + 1];
               const b = data[index + 2];
@@ -644,7 +644,7 @@ export function Canvas({ eventId, selectedColor = '#000000' }: CanvasProps) {
     
     setIsSyncing(true);
     try {
-      const gameData = await blaceAPI.getGameData(gameInfo.id);
+      const gameData = await blacesAPI.getGameData(gameInfo.id);
       
       // Convert API grid data to our pixel format
       const apiPixels = Array(CANVAS_SIZE).fill(null).map(() => Array(CANVAS_SIZE).fill('#FFFFFF'));
@@ -679,7 +679,7 @@ export function Canvas({ eventId, selectedColor = '#000000' }: CanvasProps) {
       const g = parseInt(hex.substr(2, 2), 16);
       const b = parseInt(hex.substr(4, 2), 16);
       
-      await blaceAPI.putPixel(gameInfo.id, {
+      await blacesAPI.putPixel(gameInfo.id, {
         x,
         y,
         pixel: { r, g, b }
@@ -707,7 +707,7 @@ export function Canvas({ eventId, selectedColor = '#000000' }: CanvasProps) {
           if (game && !isSyncing) {
             setIsSyncing(true);
             try {
-              const gameData = await blaceAPI.getGameData(game.id);
+              const gameData = await blacesAPI.getGameData(game.id);
               
               // Convert API grid data to our pixel format
               const apiPixels = Array(CANVAS_SIZE).fill(null).map(() => Array(CANVAS_SIZE).fill('#FFFFFF'));
@@ -733,7 +733,7 @@ export function Canvas({ eventId, selectedColor = '#000000' }: CanvasProps) {
           }
         } else {
           // Try to get game info from API
-          const game = await blaceAPI.getGameInfo(eventId);
+          const game = await blacesAPI.getGameInfo(eventId);
           setGameInfo(game);
           localStorage.setItem(`blaces-game-${eventId}`, JSON.stringify(game));
           
@@ -741,7 +741,7 @@ export function Canvas({ eventId, selectedColor = '#000000' }: CanvasProps) {
           if (game && !isSyncing) {
             setIsSyncing(true);
             try {
-              const gameData = await blaceAPI.getGameData(game.id);
+              const gameData = await blacesAPI.getGameData(game.id);
               
               // Convert API grid data to our pixel format
               const apiPixels = Array(CANVAS_SIZE).fill(null).map(() => Array(CANVAS_SIZE).fill('#FFFFFF'));
@@ -941,7 +941,7 @@ export function Canvas({ eventId, selectedColor = '#000000' }: CanvasProps) {
             const g = parseInt(hex.substr(2, 2), 16);
             const b = parseInt(hex.substr(4, 2), 16);
             
-            blaceAPI.putPixel(gameInfo.id, {
+            blacesAPI.putPixel(gameInfo.id, {
               x: screenCenter.col,
               y: screenCenter.row,
               pixel: { r, g, b }
@@ -1054,7 +1054,7 @@ export function Canvas({ eventId, selectedColor = '#000000' }: CanvasProps) {
             const g = parseInt(hex.substr(2, 2), 16);
             const b = parseInt(hex.substr(4, 2), 16);
             
-            blaceAPI.putPixel(gameInfo.id, {
+            blacesAPI.putPixel(gameInfo.id, {
               x: col,
               y: row,
               pixel: { r, g, b }
