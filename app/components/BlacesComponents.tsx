@@ -7,6 +7,7 @@ import { Icon } from "./DemoComponents";
 import { Card } from "./DemoComponents";
 import QRCode from "qrcode";
 import { blacesAPI, type GameInfo } from "../../lib/blaces-api-proxy";
+import { useBlacesWebSocket, type WebSocketPixelUpdate } from "../../lib/blaces-websocket";
 
 
 // Utility function to generate random event code (kept for potential future use)
@@ -429,7 +430,58 @@ export function Canvas({ eventId, selectedColor = '#000000' }: CanvasProps) {
   const [gameInfo, setGameInfo] = useState<GameInfo | null>(null);
   const [isSyncing, setIsSyncing] = useState(false);
   const [error, setError] = useState<string>("");
+  const [connectedUsers, setConnectedUsers] = useState<number>(0);
   const brushSize = 3; // Fixed brush size
+  
+  // WebSocket integration
+  const { client: wsClient, connectionState, error: wsError, isConnected } = useBlacesWebSocket(eventId);
+  
+  // WebSocket event handlers
+  useEffect(() => {
+    if (!wsClient) return;
+
+    // Handle real-time pixel updates from other users
+    wsClient.setOnPixelUpdate((update: WebSocketPixelUpdate) => {
+      if (update.gameId === eventId && pixels.length > 0) {
+        const { x, y, pixel } = update;
+        
+        // Convert RGB to hex
+        const hexColor = `#${pixel.r.toString(16).padStart(2, '0')}${pixel.g.toString(16).padStart(2, '0')}${pixel.b.toString(16).padStart(2, '0')}`;
+        
+        // Update the pixel in the canvas
+        setPixels(prevPixels => {
+          const newPixels = prevPixels.map(row => [...row]);
+          if (newPixels[y] && newPixels[y][x] !== undefined) {
+            newPixels[y][x] = hexColor;
+          }
+          return newPixels;
+        });
+      }
+    });
+
+    // Handle game info updates (like connected user count)
+    wsClient.setOnGameInfo((info) => {
+      if (info.gameId === eventId) {
+        setConnectedUsers(info.connectedUsers);
+      }
+    });
+
+    // Handle user join/leave events
+    wsClient.setOnUserJoined((userId) => {
+      console.log(`User ${userId} joined the game`);
+    });
+
+    wsClient.setOnUserLeft((userId) => {
+      console.log(`User ${userId} left the game`);
+    });
+
+    // Handle WebSocket errors
+    wsClient.setOnError((errorMessage) => {
+      console.error('WebSocket error:', errorMessage);
+      setError(`WebSocket error: ${errorMessage}`);
+    });
+
+  }, [wsClient, eventId, pixels.length, isConnected]);
   
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -727,7 +779,7 @@ export function Canvas({ eventId, selectedColor = '#000000' }: CanvasProps) {
     };
     
     initializeCanvas();
-  }, [eventId]); // Remove syncWithAPI from dependencies to prevent infinite loop
+  }, [eventId, isSyncing]); // Remove syncWithAPI from dependencies to prevent infinite loop
 
   // No localStorage saving - all data must go through API
   // This ensures the game is played only through the API
@@ -895,6 +947,11 @@ export function Canvas({ eventId, selectedColor = '#000000' }: CanvasProps) {
               pixel: { r, g, b }
             }).then(() => {
               setError(""); // Clear any previous errors on successful pixel placement
+              
+              // Send pixel update via WebSocket for real-time collaboration
+              if (wsClient && isConnected) {
+                wsClient.sendPixelUpdate(screenCenter.col, screenCenter.row, { r, g, b });
+              }
             }).catch((error) => {
               console.error('Failed to send pixel to API:', error);
               setError('Failed to place pixel. Please try again.');
@@ -907,7 +964,7 @@ export function Canvas({ eventId, selectedColor = '#000000' }: CanvasProps) {
       }
       setLastSelectedColor(selectedColor);
     }
-  }, [selectedColor, isMobile, lastSelectedColor, getScreenCenterPixel, pixels, gameInfo]); // Remove sendPixelToAPI from dependencies
+  }, [selectedColor, isMobile, lastSelectedColor, getScreenCenterPixel, pixels, gameInfo, wsClient, isConnected]); // Remove sendPixelToAPI from dependencies
 
 
 
@@ -1008,6 +1065,11 @@ export function Canvas({ eventId, selectedColor = '#000000' }: CanvasProps) {
               pixel: { r, g, b }
             }).then(() => {
               setError(""); // Clear any previous errors on successful pixel placement
+              
+              // Send pixel update via WebSocket for real-time collaboration
+              if (wsClient && isConnected) {
+                wsClient.sendPixelUpdate(col, row, { r, g, b });
+              }
             }).catch((error) => {
               console.error('Failed to send pixel to API:', error);
               setError('Failed to place pixel. Please try again.');
@@ -1481,11 +1543,27 @@ export function Canvas({ eventId, selectedColor = '#000000' }: CanvasProps) {
       <div className="absolute top-4 left-4 z-10 flex flex-col space-y-2">
         
         
+        {/* WebSocket Connection Status */}
+        <div className={`px-3 py-2 rounded-lg shadow-lg text-xs ${
+          isConnected 
+            ? 'bg-green-100 border border-green-300 text-green-700' 
+            : connectionState === 'connecting'
+            ? 'bg-yellow-100 border border-yellow-300 text-yellow-700'
+            : 'bg-red-100 border border-red-300 text-red-700'
+        }`}>
+          <div className="font-medium">
+            {isConnected ? '🟢 Connected' : connectionState === 'connecting' ? '🟡 Connecting...' : '🔴 Disconnected'}
+          </div>
+          {connectedUsers > 0 && (
+            <div>{connectedUsers} user{connectedUsers !== 1 ? 's' : ''} online</div>
+          )}
+        </div>
+
         {/* Error Display */}
-        {error && (
+        {(error || wsError) && (
           <div className="bg-red-100 border border-red-300 text-red-700 px-3 py-2 rounded-lg shadow-lg text-xs">
-            <div className="font-medium">API Error</div>
-            <div>{error}</div>
+            <div className="font-medium">Error</div>
+            <div>{error || wsError}</div>
           </div>
         )}
         

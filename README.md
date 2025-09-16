@@ -5,10 +5,11 @@ Blaces is a collaborative pixel art canvas application built on Base with MiniKi
 ## Features
 
 ### 🎨 Collaborative Canvas
-- Real-time collaborative pixel art creation
-- Multiple canvas sizes (16x16, 32x32, 64x64, 128x128)
+- Real-time collaborative pixel art creation with WebSocket support
+- Multiple canvas sizes (200x200 default, configurable)
 - Zoom and pan functionality for detailed work
 - Color palette with r/place-inspired colors
+- Live user count and connection status indicators
 
 ### 📱 Image-to-Pixel Conversion
 - Drag-and-drop image upload
@@ -36,10 +37,18 @@ Blaces is a collaborative pixel art canvas application built on Base with MiniKi
 - Account association capabilities
 - Background notifications
 
+### 🔄 Real-time Collaboration
+- WebSocket-based real-time pixel updates
+- Live user presence indicators
+- Automatic reconnection with exponential backoff
+- Connection status monitoring
+- Cross-platform real-time synchronization
+
 ## Tech Stack
 
 - **Frontend**: Next.js 15, React 18, TypeScript
 - **Styling**: Tailwind CSS
+- **Real-time**: WebSocket for live collaboration
 - **Blockchain**: Base, MiniKit, OnchainKit
 - **Social**: Farcaster integration
 - **Storage**: Local Storage, Redis (for notifications)
