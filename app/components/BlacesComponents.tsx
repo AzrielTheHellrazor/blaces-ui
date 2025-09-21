@@ -437,6 +437,11 @@ export function Canvas({ eventId, selectedColor = '#000000' }: CanvasProps) {
   const [connectedUsers, setConnectedUsers] = useState<number>(0);
   const brushSize = 3; // Fixed brush size
   
+  // Brush spam prevention
+  const paintedPixelsRef = useRef<Set<string>>(new Set()); // Track painted pixels in current brush stroke
+  const lastPaintTimeRef = useRef<number>(0);
+  const paintThrottleMs = 50; // Minimum time between paint operations
+  
   // WebSocket integration
   const { client: wsClient, connectionState, error: wsError, isConnected, pixelCache } = useBlacesWebSocket(eventId);
   
@@ -583,11 +588,18 @@ export function Canvas({ eventId, selectedColor = '#000000' }: CanvasProps) {
     }
   };
 
-  // Brush painting function
+  // Brush painting function with spam prevention
   const paintWithBrush = async (centerRow: number, centerCol: number) => {
     if (!isBrushMode || !isSilhouetteLocked || !hasSilhouette || !silhouetteDataRef.current || !gameInfo) {
       return;
     }
+
+    // Throttle paint operations
+    const now = Date.now();
+    if (now - lastPaintTimeRef.current < paintThrottleMs) {
+      return;
+    }
+    lastPaintTimeRef.current = now;
 
     const newPixels = pixels.map(row => [...row]);
     const halfBrush = Math.floor(brushSize / 2);
@@ -608,6 +620,17 @@ export function Canvas({ eventId, selectedColor = '#000000' }: CanvasProps) {
             
             // Only paint if the silhouette pixel is not transparent
             if (silhouettePixel && silhouettePixel !== 'transparent') {
+              const pixelKey = `${row},${col}`;
+              const currentPixelColor = pixels[row]?.[col];
+              
+              // Skip if pixel already has the same color or was painted in this stroke
+              if (currentPixelColor === silhouettePixel || paintedPixelsRef.current.has(pixelKey)) {
+                continue;
+              }
+              
+              // Mark pixel as painted in this stroke
+              paintedPixelsRef.current.add(pixelKey);
+              
               // Use the actual color from the silhouette, not the selected color
               newPixels[row][col] = silhouettePixel;
               
@@ -628,18 +651,21 @@ export function Canvas({ eventId, selectedColor = '#000000' }: CanvasProps) {
       }
     }
     
-    // Optimistic update - show immediately
-    setPixels(newPixels);
-    
-    // Send all pixels to API
-    for (const pixelData of pixelsToSend) {
-      try {
-        await blacesAPI.putPixel(gameInfo.id, pixelData);
-      } catch (error) {
-        console.error('Failed to send pixel to API:', error);
-        // Revert the pixel on error
-        const errorMessage = error instanceof Error ? error.message : String(error);
-        setError(`Failed to save pixel: ${errorMessage}`);
+    // Only update if there are pixels to paint
+    if (pixelsToSend.length > 0) {
+      // Optimistic update - show immediately
+      setPixels(newPixels);
+      
+      // Send all pixels to API
+      for (const pixelData of pixelsToSend) {
+        try {
+          await blacesAPI.putPixel(gameInfo.id, pixelData);
+        } catch (error) {
+          console.error('Failed to send pixel to API:', error);
+          // Revert the pixel on error
+          const errorMessage = error instanceof Error ? error.message : String(error);
+          setError(`Failed to save pixel: ${errorMessage}`);
+        }
       }
     }
   };
@@ -1148,6 +1174,8 @@ export function Canvas({ eventId, selectedColor = '#000000' }: CanvasProps) {
           const silhouettePixel = silhouetteDataRef.current[silhouetteRow]?.[silhouetteCol];
           
           if (silhouettePixel && silhouettePixel !== 'transparent') {
+            // Clear painted pixels set for new brush stroke
+            paintedPixelsRef.current.clear();
             await paintWithBrush(row, col);
             setIsPaintingOnSilhouette(true);
             setIsBrushDragging(true);
@@ -1264,6 +1292,10 @@ export function Canvas({ eventId, selectedColor = '#000000' }: CanvasProps) {
     setIsDraggingSilhouette(false);
     setIsPaintingOnSilhouette(false);
     setIsBrushDragging(false);
+    
+    // Clear painted pixels set when brush stroke ends
+    paintedPixelsRef.current.clear();
+    
     // Don't reset hasMoved here - let the click handler decide
   };
 
@@ -1274,6 +1306,9 @@ export function Canvas({ eventId, selectedColor = '#000000' }: CanvasProps) {
     setIsPaintingOnSilhouette(false);
     setIsBrushDragging(false);
     setHoveredPixel(null);
+    
+    // Clear painted pixels set when leaving canvas
+    paintedPixelsRef.current.clear();
     
     // Reset cursor
     if (canvasRef.current) {
