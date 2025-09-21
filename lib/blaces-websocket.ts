@@ -289,7 +289,7 @@ export class BlacesWebSocketClient {
     const wsBaseUrl = process.env.NEXT_PUBLIC_WS_URL;
     
     if (wsBaseUrl) {
-      return `${wsBaseUrl}/${this.gameId}`;
+      return `${wsBaseUrl}/ws/${this.gameId}`;
     }
     
     // Always use the specified WebSocket server for events
