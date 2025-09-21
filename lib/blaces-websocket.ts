@@ -2,9 +2,9 @@
 // This client connects to the backend WebSocket server for real-time collaboration
 
 import { useState, useEffect } from 'react';
+import { blacesAPI, RGBPixel } from './blaces-api-proxy';
 
 export interface WebSocketPixelUpdate {
-  gameId: string;
   x: number;
   y: number;
   pixel: {
@@ -12,8 +12,6 @@ export interface WebSocketPixelUpdate {
     g: number;
     b: number;
   };
-  timestamp: number;
-  userId?: string;
 }
 
 export interface WebSocketGameInfo {
@@ -38,6 +36,12 @@ export class BlacesWebSocketClient {
   private isConnecting = false;
   private shouldReconnect = true;
   
+  // Pixel cache system
+  private pixelCache: Map<string, { r: number; g: number; b: number }> = new Map();
+  private lastPixelRefresh: number = 0;
+  private refreshInterval: number = 15 * 60 * 1000; // 15 minutes in milliseconds
+  private refreshTimer: NodeJS.Timeout | null = null;
+  
   // Event handlers
   private onPixelUpdate?: (update: WebSocketPixelUpdate) => void;
   private onGameInfo?: (info: WebSocketGameInfo) => void;
@@ -46,6 +50,7 @@ export class BlacesWebSocketClient {
   private onError?: (error: string) => void;
   private onConnected?: () => void;
   private onDisconnected?: () => void;
+  private onPixelCacheLoaded?: (cache: Map<string, { r: number; g: number; b: number }>) => void;
 
   constructor(gameId: string) {
     this.gameId = gameId;
@@ -80,6 +85,71 @@ export class BlacesWebSocketClient {
     this.onDisconnected = handler;
   }
 
+  setOnPixelCacheLoaded(handler: (cache: Map<string, { r: number; g: number; b: number }>) => void) {
+    this.onPixelCacheLoaded = handler;
+  }
+
+  // Get pixel from cache
+  getPixelFromCache(x: number, y: number): { r: number; g: number; b: number } | null {
+    const key = `${x},${y}`;
+    return this.pixelCache.get(key) || null;
+  }
+
+  // Get all pixels from cache
+  getAllPixelsFromCache(): Map<string, { r: number; g: number; b: number }> {
+    return new Map(this.pixelCache);
+  }
+
+  // Load all pixels from API and populate cache
+  async loadAllPixels(): Promise<void> {
+    try {
+      console.log(`Loading all pixels for event ${this.gameId}...`);
+      const gameData = await blacesAPI.getGameData(this.gameId);
+      
+      // Clear existing cache
+      this.pixelCache.clear();
+      
+      // Populate cache with API data
+      gameData.grid.forEach((pixel: RGBPixel, index: number) => {
+        const width = gameData.game_info.width;
+        const x = index % width;
+        const y = Math.floor(index / width);
+        const key = `${x},${y}`;
+        this.pixelCache.set(key, { r: pixel.r, g: pixel.g, b: pixel.b });
+      });
+      
+      this.lastPixelRefresh = Date.now();
+      console.log(`Loaded ${this.pixelCache.size} pixels into cache`);
+      
+      // Notify listeners that cache is loaded
+      this.onPixelCacheLoaded?.(this.pixelCache);
+    } catch (error) {
+      console.error('Failed to load pixels:', error);
+      this.onError?.('Failed to load pixel data');
+    }
+  }
+
+  // Setup periodic pixel refresh
+  private setupPeriodicRefresh(): void {
+    if (this.refreshTimer) {
+      clearInterval(this.refreshTimer);
+    }
+    
+    this.refreshTimer = setInterval(() => {
+      const now = Date.now();
+      if (now - this.lastPixelRefresh >= this.refreshInterval) {
+        console.log('Refreshing pixel cache...');
+        this.loadAllPixels();
+      }
+    }, 60000); // Check every minute
+  }
+
+  // Update pixel in cache from WebSocket
+  private updatePixelInCache(x: number, y: number, pixel: { r: number; g: number; b: number }): void {
+    const key = `${x},${y}`;
+    this.pixelCache.set(key, pixel);
+  }
+
   // Connect to WebSocket server
   async connect(): Promise<void> {
     if (this.isConnecting || (this.ws && this.ws.readyState === WebSocket.OPEN)) {
@@ -90,6 +160,12 @@ export class BlacesWebSocketClient {
     this.shouldReconnect = true;
 
     try {
+      // First, load all pixels into cache
+      await this.loadAllPixels();
+      
+      // Setup periodic refresh
+      this.setupPeriodicRefresh();
+      
       // Get the WebSocket URL from environment or construct it
       const wsUrl = this.getWebSocketUrl();
       
@@ -112,7 +188,7 @@ export class BlacesWebSocketClient {
 
       this.ws.onmessage = (event) => {
         try {
-          const message: WebSocketMessage = JSON.parse(event.data);
+          const message: Record<string, unknown> = JSON.parse(event.data);
           this.handleMessage(message);
         } catch (error) {
           console.error('Error parsing WebSocket message:', error);
@@ -131,9 +207,14 @@ export class BlacesWebSocketClient {
       };
 
       this.ws.onerror = (error) => {
-        console.error('WebSocket error:', error);
+        // In development, only log to console if backend is not running
+        if (process.env.NODE_ENV === 'development') {
+          console.warn('WebSocket connection failed - backend may not be running');
+        } else {
+          console.error('WebSocket error:', error);
+          this.onError?.('WebSocket connection error');
+        }
         this.isConnecting = false;
-        this.onError?.('WebSocket connection error');
       };
 
     } catch (error) {
@@ -149,6 +230,12 @@ export class BlacesWebSocketClient {
     if (this.ws) {
       this.ws.close();
       this.ws = null;
+    }
+    
+    // Clear refresh timer
+    if (this.refreshTimer) {
+      clearInterval(this.refreshTimer);
+      this.refreshTimer = null;
     }
   }
 
@@ -202,43 +289,50 @@ export class BlacesWebSocketClient {
     const wsBaseUrl = process.env.NEXT_PUBLIC_WS_URL;
     
     if (wsBaseUrl) {
-      return `${wsBaseUrl}/ws`;
+      return `${wsBaseUrl}/${this.gameId}`;
     }
     
-    // Fallback: construct from current location
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const host = window.location.host;
-    
-    // For development, construct WebSocket URL from current host
-    if (host.includes('localhost') || host.includes('127.0.0.1')) {
-      return `${protocol}//${host}/ws`;
-    }
-    
-    return `${protocol}//${host}/ws`;
+    // Always use the specified WebSocket server for events
+    return `wss://blace.thefuture.finance/ws/${this.gameId}`;
   }
 
-  private handleMessage(message: WebSocketMessage): void {
-    switch (message.type) {
-      case 'pixel_update':
-        this.onPixelUpdate?.(message.data as WebSocketPixelUpdate);
-        break;
-      case 'game_info':
-        this.onGameInfo?.(message.data as WebSocketGameInfo);
-        break;
-      case 'user_joined':
-        this.onUserJoined?.(message.data as string);
-        break;
-      case 'user_left':
-        this.onUserLeft?.(message.data as string);
-        break;
-      case 'error':
-        this.onError?.(message.data as string);
-        break;
-      case 'connected':
-        console.log('WebSocket server confirmed connection');
-        break;
-      default:
-        console.warn('Unknown WebSocket message type:', message.type);
+  private handleMessage(message: Record<string, unknown>): void {
+    // Handle pixel update messages with the new format: {"x":0,"y":0,"pixel":{"r":0,"g":0,"b":0}}
+    if (message.x !== undefined && message.y !== undefined && message.pixel) {
+      const pixelUpdate: WebSocketPixelUpdate = {
+        x: message.x as number,
+        y: message.y as number,
+        pixel: message.pixel as { r: number; g: number; b: number }
+      };
+      
+      // Update pixel in cache
+      this.updatePixelInCache(pixelUpdate.x, pixelUpdate.y, pixelUpdate.pixel);
+      
+      // Notify listeners
+      this.onPixelUpdate?.(pixelUpdate);
+    } else if (message.type) {
+      // Handle other message types if needed
+      switch (message.type) {
+        case 'game_info':
+          this.onGameInfo?.(message.data as WebSocketGameInfo);
+          break;
+        case 'user_joined':
+          this.onUserJoined?.(message.data as string);
+          break;
+        case 'user_left':
+          this.onUserLeft?.(message.data as string);
+          break;
+        case 'error':
+          this.onError?.(message.data as string);
+          break;
+        case 'connected':
+          console.log('WebSocket server confirmed connection');
+          break;
+        default:
+          console.warn('Unknown WebSocket message type:', message.type);
+      }
+    } else {
+      console.warn('Unknown WebSocket message format:', message);
     }
   }
 
@@ -261,6 +355,7 @@ export function useBlacesWebSocket(gameId: string) {
   const [client, setClient] = useState<BlacesWebSocketClient | null>(null);
   const [connectionState, setConnectionState] = useState<string>('disconnected');
   const [error, setError] = useState<string>('');
+  const [pixelCache, setPixelCache] = useState<Map<string, { r: number; g: number; b: number }> | null>(null);
 
   useEffect(() => {
     const wsClient = new BlacesWebSocketClient(gameId);
@@ -280,9 +375,13 @@ export function useBlacesWebSocket(gameId: string) {
       setConnectionState('error');
     });
 
+    wsClient.setOnPixelCacheLoaded((cache) => {
+      setPixelCache(new Map(cache));
+    });
+
     setClient(wsClient);
     
-    // Connect
+    // Connect (this will load pixels first, then connect WebSocket)
     wsClient.connect();
 
     // Cleanup on unmount
@@ -295,6 +394,7 @@ export function useBlacesWebSocket(gameId: string) {
     client,
     connectionState,
     error,
+    pixelCache,
     isConnected: client?.isConnected() ?? false
   };
 }

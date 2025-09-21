@@ -69,6 +69,7 @@ export function CreateEvent() {
   const [qrCodeDataUrl, setQrCodeDataUrl] = useState("");
   const [isCreating, setIsCreating] = useState(false);
   const [error, setError] = useState("");
+  const [createdGame, setCreatedGame] = useState<GameInfo | null>(null);
 
   const handleCreate = async () => {
     if (!eventName.trim()) return;
@@ -83,6 +84,9 @@ export function CreateEvent() {
         width: 200, // 200x200 grid
         height: 200
       });
+      
+      // Save created game to state
+      setCreatedGame(game);
       
       // Use the game ID as the event code
       setEventCode(game.id);
@@ -289,11 +293,12 @@ export function CreateEvent() {
               </Button>
               <Button
                 onClick={() => {
-                  if (typeof window !== 'undefined') {
-                    window.location.href = eventUrl;
+                  if (typeof window !== 'undefined' && createdGame) {
+                    window.location.href = `/event/${createdGame.id}`;
                   }
                 }}
                 className="flex-1 h-12"
+                disabled={!createdGame}
               >
                 Join Event
               </Button>
@@ -428,13 +433,12 @@ export function Canvas({ eventId, selectedColor = '#000000' }: CanvasProps) {
   const [isPaintingOnSilhouette, setIsPaintingOnSilhouette] = useState(false);
   const [isBrushDragging, setIsBrushDragging] = useState(false);
   const [gameInfo, setGameInfo] = useState<GameInfo | null>(null);
-  const [isSyncing, setIsSyncing] = useState(false);
   const [error, setError] = useState<string>("");
   const [connectedUsers, setConnectedUsers] = useState<number>(0);
   const brushSize = 3; // Fixed brush size
   
   // WebSocket integration
-  const { client: wsClient, connectionState, error: wsError, isConnected } = useBlacesWebSocket(eventId);
+  const { client: wsClient, connectionState, error: wsError, isConnected, pixelCache } = useBlacesWebSocket(eventId);
   
   // WebSocket event handlers
   useEffect(() => {
@@ -442,7 +446,7 @@ export function Canvas({ eventId, selectedColor = '#000000' }: CanvasProps) {
 
     // Handle real-time pixel updates from other users
     wsClient.setOnPixelUpdate((update: WebSocketPixelUpdate) => {
-      if (update.gameId === eventId && pixels.length > 0) {
+      if (pixels.length > 0) {
         const { x, y, pixel } = update;
         
         // Convert RGB to hex
@@ -477,11 +481,38 @@ export function Canvas({ eventId, selectedColor = '#000000' }: CanvasProps) {
 
     // Handle WebSocket errors
     wsClient.setOnError((errorMessage) => {
-      console.error('WebSocket error:', errorMessage);
-      setError(`WebSocket error: ${errorMessage}`);
+      // Don't show WebSocket errors in development mode
+      if (process.env.NODE_ENV === 'development') {
+        console.log('WebSocket error (development mode):', errorMessage);
+      } else {
+        console.error('WebSocket error:', errorMessage);
+        setError(`WebSocket error: ${errorMessage}`);
+      }
     });
 
   }, [wsClient, eventId, pixels.length, isConnected]);
+
+  // Handle pixel cache loaded from WebSocket
+  useEffect(() => {
+    if (!pixelCache || pixelCache.size === 0) return;
+    
+    console.log(`Loading ${pixelCache.size} pixels from WebSocket cache...`);
+    
+    // Convert cache to 2D array format
+    const cachePixels = Array(CANVAS_SIZE).fill(null).map(() => Array(CANVAS_SIZE).fill('#FFFFFF'));
+    
+    pixelCache.forEach((pixel, key) => {
+      const [x, y] = key.split(',').map(Number);
+      if (x >= 0 && x < CANVAS_SIZE && y >= 0 && y < CANVAS_SIZE) {
+        const hexColor = `#${pixel.r.toString(16).padStart(2, '0')}${pixel.g.toString(16).padStart(2, '0')}${pixel.b.toString(16).padStart(2, '0')}`;
+        cachePixels[y][x] = hexColor;
+      }
+    });
+    
+    setPixels(cachePixels);
+    setIsLoading(false);
+    setError("");
+  }, [pixelCache]);
   
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -553,13 +584,14 @@ export function Canvas({ eventId, selectedColor = '#000000' }: CanvasProps) {
   };
 
   // Brush painting function
-  const paintWithBrush = (centerRow: number, centerCol: number) => {
-    if (!isBrushMode || !isSilhouetteLocked || !hasSilhouette || !silhouetteDataRef.current) {
+  const paintWithBrush = async (centerRow: number, centerCol: number) => {
+    if (!isBrushMode || !isSilhouetteLocked || !hasSilhouette || !silhouetteDataRef.current || !gameInfo) {
       return;
     }
 
     const newPixels = pixels.map(row => [...row]);
     const halfBrush = Math.floor(brushSize / 2);
+    const pixelsToSend: Array<{x: number, y: number, pixel: {r: number, g: number, b: number}}> = [];
     
     // Paint in a square around the center pixel
     for (let row = centerRow - halfBrush; row <= centerRow + halfBrush; row++) {
@@ -578,13 +610,38 @@ export function Canvas({ eventId, selectedColor = '#000000' }: CanvasProps) {
             if (silhouettePixel && silhouettePixel !== 'transparent') {
               // Use the actual color from the silhouette, not the selected color
               newPixels[row][col] = silhouettePixel;
+              
+              // Convert hex color to RGB for API
+              const hex = silhouettePixel.replace('#', '');
+              const r = parseInt(hex.substr(0, 2), 16);
+              const g = parseInt(hex.substr(2, 2), 16);
+              const b = parseInt(hex.substr(4, 2), 16);
+              
+              pixelsToSend.push({
+                x: col,
+                y: row,
+                pixel: { r, g, b }
+              });
             }
           }
         }
       }
     }
     
+    // Optimistic update - show immediately
     setPixels(newPixels);
+    
+    // Send all pixels to API
+    for (const pixelData of pixelsToSend) {
+      try {
+        await blacesAPI.putPixel(gameInfo.id, pixelData);
+      } catch (error) {
+        console.error('Failed to send pixel to API:', error);
+        // Revert the pixel on error
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        setError(`Failed to save pixel: ${errorMessage}`);
+      }
+    }
   };
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -592,34 +649,34 @@ export function Canvas({ eventId, selectedColor = '#000000' }: CanvasProps) {
     if (file) {
       console.log('Processing image:', file.name);
       
-      // Process image to 200x200 pixels
+      // Process image to 20x20 pixels
       const img = new window.Image();
       const canvas = document.createElement('canvas');
       const ctx = canvas.getContext('2d');
       
       if (ctx) {
-        canvas.width = 200;
-        canvas.height = 200;
+        canvas.width = 20;
+        canvas.height = 20;
         
         img.onload = () => {
           console.log('Image loaded, processing...');
           
           // Clear canvas
-          ctx.clearRect(0, 0, 200, 200);
+          ctx.clearRect(0, 0, 20, 20);
           
-          // Draw image scaled to 200x200
-          ctx.drawImage(img, 0, 0, 200, 200);
+          // Draw image scaled to 20x20
+          ctx.drawImage(img, 0, 0, 20, 20);
           
           // Get pixel data
-          const imageData = ctx.getImageData(0, 0, 200, 200);
+          const imageData = ctx.getImageData(0, 0, 20, 20);
           const data = imageData.data;
           
           // Convert to pixel array
           const pixelData: string[][] = [];
-          for (let y = 0; y < 200; y++) {
+          for (let y = 0; y < 20; y++) {
             const row: string[] = [];
-            for (let x = 0; x < 200; x++) {
-              const index = (y * 200 + x) * 4;
+            for (let x = 0; x < 20; x++) {
+              const index = (y * 20 + x) * 4;
               const r = data[index];
               const g = data[index + 1];
               const b = data[index + 2];
@@ -640,7 +697,7 @@ export function Canvas({ eventId, selectedColor = '#000000' }: CanvasProps) {
           console.log('Pixel data created:', pixelData.length, 'x', pixelData[0]?.length);
           
           // Store silhouette data for movement
-          setSilhouettePosition({ x: 90, y: 90 }); // Center position
+          setSilhouettePosition({ x: 90, y: 90 }); // Center position for 20x20 silhouette
           setHasSilhouette(true);
           setIsSilhouetteLocked(false);
           
@@ -693,93 +750,31 @@ export function Canvas({ eventId, selectedColor = '#000000' }: CanvasProps) {
 
 
 
-  // Initialize canvas with API data
+  // Initialize basic canvas state when eventId changes
   useEffect(() => {
-    const initializeCanvas = async () => {
-      console.log(`Initializing canvas for event ${eventId}: ${CANVAS_SIZE}x${CANVAS_SIZE}`);
-      
-      try {
-        // Try to get game info from localStorage first
-        const savedGameInfo = localStorage.getItem(`blaces-game-${eventId}`);
-        if (savedGameInfo) {
-          const game = JSON.parse(savedGameInfo);
-          setGameInfo(game);
-          
-          // Load from API
-          if (game && !isSyncing) {
-            setIsSyncing(true);
-            try {
-              const gameData = await blacesAPI.getGameData(game.id);
-              
-              // Convert API grid data to our pixel format
-              const apiPixels = Array(CANVAS_SIZE).fill(null).map(() => Array(CANVAS_SIZE).fill('#FFFFFF'));
-              
-              gameData.grid.forEach((pixel, index) => {
-                const row = Math.floor(index / CANVAS_SIZE);
-                const col = index % CANVAS_SIZE;
-                if (row < CANVAS_SIZE && col < CANVAS_SIZE) {
-                  const hexColor = `#${pixel.r.toString(16).padStart(2, '0')}${pixel.g.toString(16).padStart(2, '0')}${pixel.b.toString(16).padStart(2, '0')}`;
-                  apiPixels[row][col] = hexColor;
-                }
-              });
-              
-              setPixels(apiPixels);
-              setError("");
-            } catch (error) {
-              console.error('Failed to sync with API:', error);
-              setError('Failed to sync with API. Please try again.');
-            } finally {
-              setIsSyncing(false);
-            }
-          }
-        } else {
-          // Try to get game info from API
-          const game = await blacesAPI.getGameInfo(eventId);
-          setGameInfo(game);
-          localStorage.setItem(`blaces-game-${eventId}`, JSON.stringify(game));
-          
-          // Load from API
-          if (game && !isSyncing) {
-            setIsSyncing(true);
-            try {
-              const gameData = await blacesAPI.getGameData(game.id);
-              
-              // Convert API grid data to our pixel format
-              const apiPixels = Array(CANVAS_SIZE).fill(null).map(() => Array(CANVAS_SIZE).fill('#FFFFFF'));
-              
-              gameData.grid.forEach((pixel, index) => {
-                const row = Math.floor(index / CANVAS_SIZE);
-                const col = index % CANVAS_SIZE;
-                if (row < CANVAS_SIZE && col < CANVAS_SIZE) {
-                  const hexColor = `#${pixel.r.toString(16).padStart(2, '0')}${pixel.g.toString(16).padStart(2, '0')}${pixel.b.toString(16).padStart(2, '0')}`;
-                  apiPixels[row][col] = hexColor;
-                }
-              });
-              
-              setPixels(apiPixels);
-              setError("");
-            } catch (error) {
-              console.error('Failed to sync with API:', error);
-              setError('Failed to sync with API. Please try again.');
-            } finally {
-              setIsSyncing(false);
-            }
-          }
-        }
-      } catch (error) {
-        console.error('Failed to initialize canvas:', error);
-        // No fallback - game must be played through API only
-        setError('Failed to load game from API. Please check your connection and try again.');
-        const emptyCanvas = Array(CANVAS_SIZE).fill(null).map(() => Array(CANVAS_SIZE).fill('#FFFFFF'));
-        setPixels(emptyCanvas);
-      }
-      
-      setPan({ x: 0, y: 0 });
-      setIsLoading(false);
-    };
+    console.log(`Initializing canvas for event ${eventId}: ${CANVAS_SIZE}x${CANVAS_SIZE}`);
+    setIsLoading(true);
+    setPan({ x: 0, y: 0 });
     
-    initializeCanvas();
-  }, [eventId, isSyncing]); // Remove syncWithAPI from dependencies to prevent infinite loop
+    // Try to get game info from localStorage first
+    const savedGameInfo = localStorage.getItem(`blaces-game-${eventId}`);
+    if (savedGameInfo) {
+      try {
+        const game = JSON.parse(savedGameInfo);
+        setGameInfo(game);
+      } catch (error) {
+        console.error('Failed to parse saved game info:', error);
+      }
+    } else {
+      // Try to get game info from API for display purposes
+      blacesAPI.getGameInfo(eventId).then(game => {
+        setGameInfo(game);
+        localStorage.setItem(`blaces-game-${eventId}`, JSON.stringify(game));
+      }).catch(error => {
+        console.error('Failed to get game info:', error);
+      });
+    }
+  }, [eventId]); // Only run when eventId changes
 
   // No localStorage saving - all data must go through API
   // This ensures the game is played only through the API
@@ -854,7 +849,7 @@ export function Canvas({ eventId, selectedColor = '#000000' }: CanvasProps) {
       const silhouetteData = silhouetteDataRef.current;
       for (let y = 0; y < 20; y++) {
         for (let x = 0; x < 20; x++) {
-          const color = silhouetteData[y][x];
+          const color = silhouetteData[y]?.[x];
           if (color && color !== 'transparent') {
             const targetY = silhouettePosition.y + y;
             const targetX = silhouettePosition.x + x;
@@ -926,13 +921,13 @@ export function Canvas({ eventId, selectedColor = '#000000' }: CanvasProps) {
   useEffect(() => {
     if (isMobile && selectedColor && pixels.length > 0 && lastSelectedColor !== selectedColor) {
       const screenCenter = getScreenCenterPixel();
-      // Paint the screen center pixel with the clicked color
+      // Optimistic pixel placement - show immediately
       const newPixels = pixels.map(row => [...row]);
       if (newPixels[screenCenter.row] && newPixels[screenCenter.row][screenCenter.col] !== undefined) {
         newPixels[screenCenter.row][screenCenter.col] = selectedColor;
         setPixels(newPixels);
         
-        // Send to API
+        // Send to API in background
         if (gameInfo) {
           try {
             // Convert hex color to RGB
@@ -941,6 +936,7 @@ export function Canvas({ eventId, selectedColor = '#000000' }: CanvasProps) {
             const g = parseInt(hex.substr(2, 2), 16);
             const b = parseInt(hex.substr(4, 2), 16);
             
+            // Send to API
             blacesAPI.putPixel(gameInfo.id, {
               x: screenCenter.col,
               y: screenCenter.row,
@@ -954,10 +950,18 @@ export function Canvas({ eventId, selectedColor = '#000000' }: CanvasProps) {
               }
             }).catch((error) => {
               console.error('Failed to send pixel to API:', error);
+              // Revert the optimistic update on error
+              const revertedPixels = pixels.map(row => [...row]);
+              revertedPixels[screenCenter.row][screenCenter.col] = pixels[screenCenter.row][screenCenter.col];
+              setPixels(revertedPixels);
               setError('Failed to place pixel. Please try again.');
             });
           } catch (error) {
             console.error('Failed to send pixel to API:', error);
+            // Revert the optimistic update on error
+            const revertedPixels = pixels.map(row => [...row]);
+            revertedPixels[screenCenter.row][screenCenter.col] = pixels[screenCenter.row][screenCenter.col];
+            setPixels(revertedPixels);
             setError('Failed to place pixel. Please try again.');
           }
         }
@@ -983,7 +987,7 @@ export function Canvas({ eventId, selectedColor = '#000000' }: CanvasProps) {
   };
 
   // Handle canvas click - paint pixel
-  const handleCanvasClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
+  const handleCanvasClick = async (e: React.MouseEvent<HTMLCanvasElement>) => {
     // Only handle click if mouse hasn't moved (it's a click, not a drag)
     if (hasMoved || isDraggingSilhouette) {
       setHasMoved(false); // Reset for next interaction
@@ -1041,16 +1045,16 @@ export function Canvas({ eventId, selectedColor = '#000000' }: CanvasProps) {
           const silhouettePixel = silhouetteDataRef.current[silhouetteRow]?.[silhouetteCol];
           
           if (silhouettePixel && silhouettePixel !== 'transparent') {
-            paintWithBrush(row, col);
+            await paintWithBrush(row, col);
           }
         }
       } else {
-        // Paint the pixel with selected color (desktop only)
+        // Optimistic pixel placement - show immediately
         const newPixels = pixels.map(row => [...row]);
         newPixels[row][col] = selectedColor;
         setPixels(newPixels);
         
-        // Send to API
+        // Send to API in background
         if (gameInfo) {
           try {
             // Convert hex color to RGB
@@ -1059,6 +1063,7 @@ export function Canvas({ eventId, selectedColor = '#000000' }: CanvasProps) {
             const g = parseInt(hex.substr(2, 2), 16);
             const b = parseInt(hex.substr(4, 2), 16);
             
+            // Send to API
             blacesAPI.putPixel(gameInfo.id, {
               x: col,
               y: row,
@@ -1072,10 +1077,18 @@ export function Canvas({ eventId, selectedColor = '#000000' }: CanvasProps) {
               }
             }).catch((error) => {
               console.error('Failed to send pixel to API:', error);
+              // Revert the optimistic update on error
+              const revertedPixels = pixels.map(row => [...row]);
+              revertedPixels[row][col] = pixels[row][col]; // Restore original color
+              setPixels(revertedPixels);
               setError('Failed to place pixel. Please try again.');
             });
           } catch (error) {
             console.error('Failed to send pixel to API:', error);
+            // Revert the optimistic update on error
+            const revertedPixels = pixels.map(row => [...row]);
+            revertedPixels[row][col] = pixels[row][col]; // Restore original color
+            setPixels(revertedPixels);
             setError('Failed to place pixel. Please try again.');
           }
         }
@@ -1087,7 +1100,7 @@ export function Canvas({ eventId, selectedColor = '#000000' }: CanvasProps) {
   };
 
   // Handle mouse down for panning and silhouette dragging
-  const handleMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
+  const handleMouseDown = async (e: React.MouseEvent<HTMLCanvasElement>) => {
     if (e.button === 0) { // Left mouse button
       const canvas = canvasRef.current;
       if (!canvas) return;
@@ -1135,7 +1148,7 @@ export function Canvas({ eventId, selectedColor = '#000000' }: CanvasProps) {
           const silhouettePixel = silhouetteDataRef.current[silhouetteRow]?.[silhouetteCol];
           
           if (silhouettePixel && silhouettePixel !== 'transparent') {
-            paintWithBrush(row, col);
+            await paintWithBrush(row, col);
             setIsPaintingOnSilhouette(true);
             setIsBrushDragging(true);
             // Don't start panning when painting on silhouette
@@ -1153,7 +1166,7 @@ export function Canvas({ eventId, selectedColor = '#000000' }: CanvasProps) {
   };
 
   // Handle mouse move for panning, hover, and silhouette dragging
-  const handleMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
+  const handleMouseMove = async (e: React.MouseEvent<HTMLCanvasElement>) => {
     const canvas = canvasRef.current;
     if (!canvas) return;
 
@@ -1172,7 +1185,7 @@ export function Canvas({ eventId, selectedColor = '#000000' }: CanvasProps) {
     canvas.style.cursor = isPanning ? 'grabbing' : 'crosshair';
     
     if (isDraggingSilhouette) {
-      // Drag silhouette
+      // Drag silhouette - allow it to move within canvas bounds (20x20 silhouette)
       const newX = Math.max(0, Math.min(CANVAS_SIZE - 20, col - dragStartPosition.x));
       const newY = Math.max(0, Math.min(CANVAS_SIZE - 20, row - dragStartPosition.y));
       setSilhouettePosition({ x: newX, y: newY });
@@ -1269,7 +1282,7 @@ export function Canvas({ eventId, selectedColor = '#000000' }: CanvasProps) {
   };
 
   // Optimized touch event handlers for mobile
-  const handleTouchStart = (e: React.TouchEvent) => {
+  const handleTouchStart = async (e: React.TouchEvent) => {
     // Don't prevent default to avoid passive event listener warning
     
     if (e.touches.length === 2) {
@@ -1333,7 +1346,7 @@ export function Canvas({ eventId, selectedColor = '#000000' }: CanvasProps) {
             const silhouettePixel = silhouetteDataRef.current[silhouetteRow]?.[silhouetteCol];
             
             if (silhouettePixel && silhouettePixel !== 'transparent') {
-              paintWithBrush(row, col);
+              await paintWithBrush(row, col);
               setIsPaintingOnSilhouette(true);
               setIsBrushDragging(true);
               // Don't start panning when painting on silhouette
@@ -1364,7 +1377,7 @@ export function Canvas({ eventId, selectedColor = '#000000' }: CanvasProps) {
     }
   };
 
-  const handleTouchMove = (e: React.TouchEvent) => {
+  const handleTouchMove = async (e: React.TouchEvent) => {
     // Don't prevent default to avoid passive event listener warning
     
 
@@ -1439,7 +1452,7 @@ export function Canvas({ eventId, selectedColor = '#000000' }: CanvasProps) {
             const silhouettePixel = silhouetteDataRef.current[silhouetteRow]?.[silhouetteCol];
             
             if (silhouettePixel && silhouettePixel !== 'transparent') {
-              paintWithBrush(row, col);
+              await paintWithBrush(row, col);
               setIsPaintingOnSilhouette(true);
             }
           }
