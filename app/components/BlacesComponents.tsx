@@ -407,9 +407,10 @@ type CanvasProps = {
   eventId: string;
   selectedColor?: string;
   colorClickTrigger?: number;
+  isFromColorPalette?: boolean;
 };
 
-export function Canvas({ eventId, selectedColor = '#000000', colorClickTrigger = 0 }: CanvasProps) {
+export function Canvas({ eventId, selectedColor = '#000000', colorClickTrigger = 0, isFromColorPalette = false }: CanvasProps) {
   const CANVAS_SIZE = 200; // 200x200 grid
   const [pixels, setPixels] = useState<string[][]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -942,9 +943,9 @@ export function Canvas({ eventId, selectedColor = '#000000', colorClickTrigger =
   }, [pixels, zoom, pan, hoveredPixel, selectedPixel, isMobile, centerPixel, blinkOpacity, silhouettePosition, hasSilhouette, isSilhouetteLocked, CANVAS_SIZE, getPixelSize]);
 
 
-  // Auto-paint screen center pixel on mobile when user clicks a color
+  // Auto-paint screen center pixel on mobile when user clicks a color from the right palette
   useEffect(() => {
-    if (isMobile && selectedColor && pixels.length > 0 && colorClickTrigger > 0) {
+    if (isMobile && selectedColor && pixels.length > 0 && colorClickTrigger > 0 && isFromColorPalette) {
       const screenCenter = getScreenCenterPixel();
       
       // Check if the pixel already has the same color - don't send to server if so
@@ -1000,7 +1001,7 @@ export function Canvas({ eventId, selectedColor = '#000000', colorClickTrigger =
         }
       }
     }
-  }, [colorClickTrigger, selectedColor, isMobile, getScreenCenterPixel, pixels, gameInfo, wsClient, isConnected]);
+  }, [colorClickTrigger, selectedColor, isMobile, getScreenCenterPixel, pixels, gameInfo, wsClient, isConnected, isFromColorPalette]);
 
 
 

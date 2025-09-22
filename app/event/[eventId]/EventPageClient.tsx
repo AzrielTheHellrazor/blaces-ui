@@ -55,9 +55,10 @@ type EventPageClientProps = {
 
 export function EventPageClient({ eventId }: EventPageClientProps) {
   const { setFrameReady, isFrameReady } = useMiniKit();
-  const [selectedColor, setSelectedColor] = useState(COLORS[0]);
+  const [selectedColor, setSelectedColor] = useState('');
   const [mounted, setMounted] = useState(false);
   const [colorClickTrigger, setColorClickTrigger] = useState(0);
+  const [isFromColorPalette, setIsFromColorPalette] = useState(false);
 
   useEffect(() => {
     setMounted(true);
@@ -65,6 +66,17 @@ export function EventPageClient({ eventId }: EventPageClientProps) {
       setFrameReady();
     }
   }, [setFrameReady, isFrameReady]);
+
+  // Reset the palette flag and clear color selection after painting
+  useEffect(() => {
+    if (isFromColorPalette && selectedColor) {
+      const timer = setTimeout(() => {
+        setIsFromColorPalette(false);
+        setSelectedColor(''); // Clear color selection after painting
+      }, 200); // Slightly longer delay to ensure painting completes
+      return () => clearTimeout(timer);
+    }
+  }, [isFromColorPalette, selectedColor]);
 
   const paletteElement = (
     <div 
@@ -96,10 +108,9 @@ export function EventPageClient({ eventId }: EventPageClientProps) {
             onClick={() => {
               setSelectedColor(color);
               setColorClickTrigger(prev => prev + 1); // Trigger pixel placement even for same color
+              setIsFromColorPalette(true); // Mark that this color selection came from the right palette
             }}
-            className={`w-5 h-5 rounded border transition-all ${
-              selectedColor === color ? 'border-black scale-110' : 'border-gray-300 hover:border-gray-500'
-            }`}
+            className="w-5 h-5 rounded border border-gray-300 hover:border-gray-500 transition-all hover:scale-110"
             style={{ backgroundColor: color }}
             title={color}
           />
@@ -112,7 +123,7 @@ export function EventPageClient({ eventId }: EventPageClientProps) {
     <>
       <div className="w-full h-screen bg-gray-200 overflow-hidden relative">
         {/* Full Screen Canvas - Pixel Place Style */}
-        <Canvas eventId={eventId} selectedColor={selectedColor} colorClickTrigger={colorClickTrigger} />
+        <Canvas eventId={eventId} selectedColor={selectedColor} colorClickTrigger={colorClickTrigger} isFromColorPalette={isFromColorPalette} />
       </div>
       
       {/* Color Palette - Rendered as Portal to avoid zoom interference */}
