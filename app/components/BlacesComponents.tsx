@@ -406,9 +406,10 @@ export function JoinEvent() {
 type CanvasProps = {
   eventId: string;
   selectedColor?: string;
+  colorClickTrigger?: number;
 };
 
-export function Canvas({ eventId, selectedColor = '#000000' }: CanvasProps) {
+export function Canvas({ eventId, selectedColor = '#000000', colorClickTrigger = 0 }: CanvasProps) {
   const CANVAS_SIZE = 200; // 200x200 grid
   const [pixels, setPixels] = useState<string[][]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -940,13 +941,19 @@ export function Canvas({ eventId, selectedColor = '#000000' }: CanvasProps) {
     ctx.restore();
   }, [pixels, zoom, pan, hoveredPixel, selectedPixel, isMobile, centerPixel, blinkOpacity, silhouettePosition, hasSilhouette, isSilhouetteLocked, CANVAS_SIZE, getPixelSize]);
 
-  // Track last selected color to detect when user clicks a color
-  const [lastSelectedColor, setLastSelectedColor] = useState<string | null>(null);
 
   // Auto-paint screen center pixel on mobile when user clicks a color
   useEffect(() => {
-    if (isMobile && selectedColor && pixels.length > 0 && lastSelectedColor !== selectedColor) {
+    if (isMobile && selectedColor && pixels.length > 0 && colorClickTrigger > 0) {
       const screenCenter = getScreenCenterPixel();
+      
+      // Check if the pixel already has the same color - don't send to server if so
+      const currentPixelColor = pixels[screenCenter.row]?.[screenCenter.col];
+      if (currentPixelColor === selectedColor) {
+        console.log('Pixel already has the same color, skipping server request');
+        return;
+      }
+      
       // Optimistic pixel placement - show immediately
       const newPixels = pixels.map(row => [...row]);
       if (newPixels[screenCenter.row] && newPixels[screenCenter.row][screenCenter.col] !== undefined) {
@@ -992,9 +999,8 @@ export function Canvas({ eventId, selectedColor = '#000000' }: CanvasProps) {
           }
         }
       }
-      setLastSelectedColor(selectedColor);
     }
-  }, [selectedColor, isMobile, lastSelectedColor, getScreenCenterPixel, pixels, gameInfo, wsClient, isConnected]); // Remove sendPixelToAPI from dependencies
+  }, [colorClickTrigger, selectedColor, isMobile, getScreenCenterPixel, pixels, gameInfo, wsClient, isConnected]);
 
 
 
@@ -1075,6 +1081,13 @@ export function Canvas({ eventId, selectedColor = '#000000' }: CanvasProps) {
           }
         }
       } else {
+        // Check if the pixel already has the same color - don't send to server if so
+        const currentPixelColor = pixels[row]?.[col];
+        if (currentPixelColor === selectedColor) {
+          console.log('Pixel already has the same color, skipping server request');
+          return;
+        }
+        
         // Optimistic pixel placement - show immediately
         const newPixels = pixels.map(row => [...row]);
         newPixels[row][col] = selectedColor;

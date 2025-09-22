@@ -57,6 +57,7 @@ export function EventPageClient({ eventId }: EventPageClientProps) {
   const { setFrameReady, isFrameReady } = useMiniKit();
   const [selectedColor, setSelectedColor] = useState(COLORS[0]);
   const [mounted, setMounted] = useState(false);
+  const [colorClickTrigger, setColorClickTrigger] = useState(0);
 
   useEffect(() => {
     setMounted(true);
@@ -92,7 +93,10 @@ export function EventPageClient({ eventId }: EventPageClientProps) {
         {COLORS.map((color) => (
           <button
             key={color}
-            onClick={() => setSelectedColor(color)}
+            onClick={() => {
+              setSelectedColor(color);
+              setColorClickTrigger(prev => prev + 1); // Trigger pixel placement even for same color
+            }}
             className={`w-5 h-5 rounded border transition-all ${
               selectedColor === color ? 'border-black scale-110' : 'border-gray-300 hover:border-gray-500'
             }`}
@@ -108,7 +112,7 @@ export function EventPageClient({ eventId }: EventPageClientProps) {
     <>
       <div className="w-full h-screen bg-gray-200 overflow-hidden relative">
         {/* Full Screen Canvas - Pixel Place Style */}
-        <Canvas eventId={eventId} selectedColor={selectedColor} />
+        <Canvas eventId={eventId} selectedColor={selectedColor} colorClickTrigger={colorClickTrigger} />
       </div>
       
       {/* Color Palette - Rendered as Portal to avoid zoom interference */}
