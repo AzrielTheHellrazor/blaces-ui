@@ -67,12 +67,16 @@ export function EventPageClient({ eventId }: EventPageClientProps) {
     }
   }, [setFrameReady, isFrameReady]);
 
-  // Reset the palette flag and clear color selection after painting
+  // Reset the palette flag after painting (but keep color selected on desktop)
   useEffect(() => {
     if (isFromColorPalette && selectedColor) {
       const timer = setTimeout(() => {
         setIsFromColorPalette(false);
-        setSelectedColor(''); // Clear color selection after painting
+        // Only clear color selection on mobile, keep it on desktop for single pixel painting
+        const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+        if (isMobile) {
+          setSelectedColor(''); // Clear color selection after painting on mobile
+        }
       }, 200); // Slightly longer delay to ensure painting completes
       return () => clearTimeout(timer);
     }
@@ -110,7 +114,9 @@ export function EventPageClient({ eventId }: EventPageClientProps) {
               setColorClickTrigger(prev => prev + 1); // Trigger pixel placement even for same color
               setIsFromColorPalette(true); // Mark that this color selection came from the right palette
             }}
-            className="w-5 h-5 rounded border border-gray-300 hover:border-gray-500 transition-all hover:scale-110"
+            className={`w-5 h-5 rounded border transition-all hover:scale-110 ${
+              selectedColor === color ? 'border-black border-2 scale-110' : 'border-gray-300 hover:border-gray-500'
+            }`}
             style={{ backgroundColor: color }}
             title={color}
           />

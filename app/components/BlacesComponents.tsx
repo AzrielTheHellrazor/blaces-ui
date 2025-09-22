@@ -1062,6 +1062,12 @@ export function Canvas({ eventId, selectedColor = '#000000', colorClickTrigger =
         return;
       }
       
+      // On desktop, require a selected color for single pixel painting
+      if (!selectedColor && !isBrushMode) {
+        console.log('No color selected for single pixel painting');
+        return;
+      }
+      
       // Use brush tool if enabled and template is locked, otherwise single pixel
       if (isBrushMode && isSilhouetteLocked && hasSilhouette && silhouetteDataRef.current) {
         // Check if we're over the silhouette area
