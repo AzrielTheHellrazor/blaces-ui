@@ -6,7 +6,7 @@ import { Button } from "./DemoComponents";
 import { Icon } from "./DemoComponents";
 import { Card } from "./DemoComponents";
 import QRCode from "qrcode";
-import { blacesAPI, type GameInfo } from "../../lib/blaces-api-proxy";
+import { blacesAPI, type GameInfo } from "../../lib/blaces-api-client";
 import { useBlacesWebSocket, type WebSocketPixelUpdate } from "../../lib/blaces-websocket";
 
 

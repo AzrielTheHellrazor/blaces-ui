@@ -2,7 +2,7 @@
 // This client connects to the backend WebSocket server for real-time collaboration
 
 import { useState, useEffect } from 'react';
-import { blacesAPI, RGBPixel } from './blaces-api-proxy';
+import { blacesAPI, RGBPixel } from './blaces-api-client';
 
 export interface WebSocketPixelUpdate {
   x: number;
@@ -292,8 +292,14 @@ export class BlacesWebSocketClient {
       return `${wsBaseUrl}/ws/${this.gameId}`;
     }
     
-    // Always use the specified WebSocket server for events
-    return `wss://blace.thefuture.finance/ws/${this.gameId}`;
+    // Use WebSocket URL from environment variable
+    const wsUrl = process.env.NEXT_PUBLIC_WS_URL;
+    if (wsUrl) {
+      return `${wsUrl}/ws/${this.gameId}`;
+    }
+    
+    // Fallback - should not happen in production
+    throw new Error('WebSocket URL not configured. Please set NEXT_PUBLIC_WS_URL environment variable.');
   }
 
   private handleMessage(message: Record<string, unknown>): void {

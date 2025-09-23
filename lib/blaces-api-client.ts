@@ -43,22 +43,30 @@ export class BlacesAPIError extends Error {
   }
 }
 
-export class BlacesAPIProxyClient {
+export class BlacesAPIClient {
   private baseUrl: string;
 
-  constructor(baseUrl: string = '') {
-    this.baseUrl = baseUrl; // Use relative URLs for Next.js API routes
+  constructor(baseUrl?: string) {
+    // Do not leak the backend URL in the client bundle; require explicit baseUrl or environment variable
+    if (baseUrl) {
+      this.baseUrl = baseUrl;
+    } else if (process.env.NEXT_PUBLIC_API_BASE_URL) {
+      this.baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL;
+    } else {
+      throw new Error('API base URL must be provided via constructor or NEXT_PUBLIC_API_BASE_URL environment variable');
+    }
   }
 
   private async makeRequest<T>(
     endpoint: string,
     options: RequestInit = {}
   ): Promise<T> {
-    const url = `${this.baseUrl}/api/blaces${endpoint}`;
+    const url = `${this.baseUrl}${endpoint}`;
     
     try {
       const response = await fetch(url, {
         ...options,
+        mode: 'cors',
         headers: {
           'Content-Type': 'application/json',
           'Accept': 'application/json',
@@ -69,7 +77,7 @@ export class BlacesAPIProxyClient {
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
         throw new BlacesAPIError(
-          errorData.error || `API request failed: ${response.statusText}`,
+          errorData.error || `API request failed: ${response.statusText} (URL: ${url})`,
           response.status,
           endpoint
         );
@@ -116,14 +124,14 @@ export class BlacesAPIProxyClient {
    * Get information about all available games
    */
   async getAllGamesInfo(): Promise<GameInfo[]> {
-    return this.makeRequest<GameInfo[]>('/games');
+    return this.makeRequest<GameInfo[]>('/api/info');
   }
 
   /**
    * Create a new game
    */
   async createGame(request: CreateGameRequest): Promise<GameInfo> {
-    return this.makeRequest<GameInfo>('/games', {
+    return this.makeRequest<GameInfo>('/api/games', {
       method: 'POST',
       body: JSON.stringify(request),
     });
@@ -133,21 +141,21 @@ export class BlacesAPIProxyClient {
    * Get information about a specific game
    */
   async getGameInfo(gameId: string): Promise<GameInfo> {
-    return this.makeRequest<GameInfo>(`/games/${gameId}/info`);
+    return this.makeRequest<GameInfo>(`/api/games/${gameId}/info`);
   }
 
   /**
    * Get the grid data for a specific game
    */
   async getGameData(gameId: string): Promise<GridData> {
-    return this.makeRequest<GridData>(`/games/${gameId}/data`);
+    return this.makeRequest<GridData>(`/api/games/${gameId}/data`);
   }
 
   /**
    * Place a pixel on the game grid
    */
   async putPixel(gameId: string, request: PutPixelRequest): Promise<void> {
-    await this.makeRequest<void>(`/games/${gameId}/pixels`, {
+    await this.makeRequest<void>(`/api/games/${gameId}/pixels`, {
       method: 'POST',
       body: JSON.stringify(request),
     });
@@ -173,5 +181,7 @@ export class BlacesAPIProxyClient {
   }
 }
 
-// Default client instance using proxy
-export const blacesAPI = new BlacesAPIProxyClient();
+// Default client instance using direct backend connection
+export const blacesAPI = new BlacesAPIClient(
+  process.env.NEXT_PUBLIC_API_BASE_URL || undefined
+);
