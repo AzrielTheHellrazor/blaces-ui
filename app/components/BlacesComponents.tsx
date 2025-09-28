@@ -34,13 +34,25 @@ export function BlacesHome() {
           <Button
             onClick={() => {
               if (typeof window !== 'undefined') {
+                window.location.assign('/event/2e90cdf1-9f04-4b36-b7d0-b303918243aa');
+              }
+            }}
+            className="w-full h-12 text-base bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-white flex items-center justify-start pl-4"
+            icon={<Icon name="star" size="sm" />}
+          >
+            <span className="ml-2">Main Event</span>
+          </Button>
+          
+          <Button
+            onClick={() => {
+              if (typeof window !== 'undefined') {
                 window.location.href = '/create-event';
               }
             }}
-            className="w-full h-12 text-base"
+            className="w-full h-12 text-base flex items-center justify-start pl-4"
             icon={<Icon name="plus" size="sm" />}
           >
-            Create Event
+            <span className="ml-2">Create Event</span>
           </Button>
           
           <Button
@@ -50,10 +62,10 @@ export function BlacesHome() {
                 window.location.href = '/join-event';
               }
             }}
-            className="w-full h-12 text-base"
+            className="w-full h-12 text-base flex items-center justify-start pl-4"
             icon={<Icon name="arrow-right" size="sm" />}
           >
-            Join Event
+            <span className="ml-2">Join Event</span>
           </Button>
         </div>
       </Card>
