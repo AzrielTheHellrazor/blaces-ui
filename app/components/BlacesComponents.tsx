@@ -8,6 +8,8 @@ import { Card } from "./DemoComponents";
 import QRCode from "qrcode";
 import { blacesAPI, type GameInfo } from "../../lib/blaces-api-client";
 import { useBlacesWebSocket, type WebSocketPixelUpdate } from "../../lib/blaces-websocket";
+import { eventStorage } from "../../lib/storage";
+import { paymentService } from "../../lib/payment";
 
 
 // Utility function to generate random event code (kept for potential future use)
@@ -76,12 +78,14 @@ export function BlacesHome() {
 export function CreateEvent() {
   const [eventName, setEventName] = useState("");
   const [eventDescription, setEventDescription] = useState("");
+  const [eventDuration, setEventDuration] = useState(60); // Default 1 hour
   const [eventCode, setEventCode] = useState("");
   const [showQR, setShowQR] = useState(false);
   const [qrCodeDataUrl, setQrCodeDataUrl] = useState("");
   const [isCreating, setIsCreating] = useState(false);
   const [error, setError] = useState("");
   const [createdGame, setCreatedGame] = useState<GameInfo | null>(null);
+  const [paymentStatus, setPaymentStatus] = useState<'idle' | 'checking' | 'processing' | 'success' | 'failed'>('idle');
 
   const handleCreate = async () => {
     if (!eventName.trim()) return;
@@ -90,11 +94,41 @@ export function CreateEvent() {
     setError("");
     
     try {
-      // Create game using Blaces API
+      // Step 1: Check USDC balance
+      setPaymentStatus('checking');
+      const hasBalance = await paymentService.checkUSDCBalance('0x0000000000000000000000000000000000000000'); // Mock address
+      if (!hasBalance) {
+        setError('Insufficient USDC balance. You need at least 1 USDC to create an event.');
+        setPaymentStatus('failed');
+        return;
+      }
+      
+      // Step 2: Process payment
+      setPaymentStatus('processing');
+      const paymentResult = await paymentService.processPayment('0x0000000000000000000000000000000000000000'); // Mock address
+      
+      if (!paymentResult.success) {
+        setError(paymentResult.error || 'Payment failed');
+        setPaymentStatus('failed');
+        return;
+      }
+      
+      setPaymentStatus('success');
+      
+      // Step 3: Create the game using Blaces API
       const game = await blacesAPI.createGame({
         name: eventName,
         width: 200, // 200x200 grid
         height: 200
+      });
+      
+      // Step 4: Create event metadata
+      await eventStorage.createEvent({
+        name: eventName,
+        description: eventDescription,
+        duration: eventDuration,
+        creator: '0x0000000000000000000000000000000000000000', // Mock address
+        paymentTxHash: paymentResult.txHash || 'mock-tx-hash'
       });
       
       // Save created game to state
@@ -103,15 +137,17 @@ export function CreateEvent() {
       // Use the game ID as the event code
       setEventCode(game.id);
       
-      // Save event metadata with game info
-      const eventMetadata = {
+      // Save event metadata with game info and duration
+      const localEventMetadata = {
         name: eventName,
         description: eventDescription,
+        duration: eventDuration,
         gameId: game.id,
         canvasSize: 200, // 200x200 grid
-        createdAt: new Date().toISOString()
+        createdAt: new Date().toISOString(),
+        expiresAt: new Date(Date.now() + eventDuration * 60 * 1000).toISOString()
       };
-      localStorage.setItem(`blaces-event-${game.id}`, JSON.stringify(eventMetadata));
+      localStorage.setItem(`blaces-event-${game.id}`, JSON.stringify(localEventMetadata));
       
       // Generate QR code
       try {
@@ -143,6 +179,7 @@ export function CreateEvent() {
       } else {
         setError('Failed to create event. Please try again.');
       }
+      setPaymentStatus('failed');
     } finally {
       setIsCreating(false);
     }
@@ -185,16 +222,40 @@ export function CreateEvent() {
             
             <div>
               <label className="block text-sm font-medium text-foreground mb-2">
-                Canvas Size
+                Event Duration
               </label>
-              <div className="w-full px-3 py-2 bg-card-bg border border-card-border rounded-lg text-foreground text-base">
-                200x200
-              </div>
+              <select
+                value={eventDuration}
+                onChange={(e) => setEventDuration(Number(e.target.value))}
+                className="w-full px-3 py-2 bg-card-bg border border-card-border rounded-lg text-foreground focus:outline-none focus:ring-1 focus:ring-accent text-base"
+              >
+                <option value={60}>1 hour</option>
+                <option value={120}>2 hours</option>
+                <option value={180}>3 hours</option>
+                <option value={240}>4 hours</option>
+              </select>
             </div>
+            
             
             {error && (
               <div className="text-red-500 text-sm text-center bg-red-50 p-3 rounded-lg border border-red-200">
                 {error}
+              </div>
+            )}
+            
+            {/* Payment Status */}
+            {paymentStatus !== 'idle' && (
+              <div className={`text-sm text-center p-3 rounded-lg border ${
+                paymentStatus === 'success' 
+                  ? 'bg-green-50 border-green-200 text-green-700'
+                  : paymentStatus === 'failed'
+                  ? 'bg-red-50 border-red-200 text-red-700'
+                  : 'bg-yellow-50 border-yellow-200 text-yellow-700'
+              }`}>
+                {paymentStatus === 'checking' && 'Checking USDC balance...'}
+                {paymentStatus === 'processing' && 'Processing payment...'}
+                {paymentStatus === 'success' && 'Payment successful! Creating event...'}
+                {paymentStatus === 'failed' && 'Payment failed. Please try again.'}
               </div>
             )}
             

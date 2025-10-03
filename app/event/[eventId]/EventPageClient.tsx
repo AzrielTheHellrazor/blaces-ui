@@ -59,6 +59,10 @@ export function EventPageClient({ eventId }: EventPageClientProps) {
   const [mounted, setMounted] = useState(false);
   const [colorClickTrigger, setColorClickTrigger] = useState(0);
   const [isFromColorPalette, setIsFromColorPalette] = useState(false);
+  const [eventStatus, setEventStatus] = useState<'active' | 'expired' | 'minting' | 'completed'>('active');
+  const [eventMetadata, setEventMetadata] = useState<Record<string, unknown> | null>(null);
+  const [timeRemaining, setTimeRemaining] = useState(0);
+  const [mintingResult, setMintingResult] = useState<Record<string, unknown> | null>(null);
 
   useEffect(() => {
     setMounted(true);
@@ -66,6 +70,104 @@ export function EventPageClient({ eventId }: EventPageClientProps) {
       setFrameReady();
     }
   }, [setFrameReady, isFrameReady]);
+
+  // Load event metadata and check status
+  useEffect(() => {
+    const loadEventMetadata = () => {
+      try {
+        const savedMetadata = localStorage.getItem(`blaces-event-${eventId}`);
+        if (savedMetadata) {
+          const metadata = JSON.parse(savedMetadata);
+          setEventMetadata(metadata);
+          
+          // Check if event is expired
+          const now = Date.now();
+          const expiresAt = new Date(metadata.expiresAt).getTime();
+          
+          if (now > expiresAt) {
+            setEventStatus('expired');
+          } else {
+            setEventStatus('active');
+            // Calculate time remaining
+            const remaining = Math.max(0, expiresAt - now);
+            setTimeRemaining(remaining);
+          }
+        }
+      } catch (error) {
+        console.error('Error loading event metadata:', error);
+      }
+    };
+
+    loadEventMetadata();
+  }, [eventId]);
+
+  // Timer for countdown
+  useEffect(() => {
+    if (eventStatus === 'active' && timeRemaining > 0) {
+      const timer = setInterval(() => {
+        setTimeRemaining(prev => {
+          if (prev <= 1000) {
+            setEventStatus('expired');
+            return 0;
+          }
+          return prev - 1000;
+        });
+      }, 1000);
+
+      return () => clearInterval(timer);
+    }
+  }, [eventStatus, timeRemaining]);
+
+  // Format time remaining
+  const formatTimeRemaining = (ms: number) => {
+    const minutes = Math.floor(ms / 60000);
+    const seconds = Math.floor((ms % 60000) / 1000);
+    return `${minutes}:${seconds.toString().padStart(2, '0')}`;
+  };
+
+  // Handle NFT minting
+  const handleMintNFT = async () => {
+    setEventStatus('minting');
+    
+    try {
+      // Get canvas data from the game
+      const response = await fetch(`https://blace.thefuture.finance/api/games/${eventId}/data`);
+      const gameData = await response.json();
+      
+      // Convert grid data to canvas image
+      const canvas = document.createElement('canvas');
+      canvas.width = 200;
+      canvas.height = 200;
+      const ctx = canvas.getContext('2d');
+      
+      if (ctx) {
+        // Draw pixels
+        gameData.grid.forEach((pixel: Record<string, unknown>, index: number) => {
+          const x = index % 200;
+          const y = Math.floor(index / 200);
+          ctx.fillStyle = `rgb(${pixel.r}, ${pixel.g}, ${pixel.b})`;
+          ctx.fillRect(x, y, 1, 1);
+        });
+        
+        // Simulate NFT minting process
+        // In a real implementation, you would call the NFT minting service
+        await new Promise(resolve => setTimeout(resolve, 3000)); // Simulate processing time
+        
+        const mockResult = {
+          success: true,
+          contractAddress: `0x${Math.random().toString(16).substr(2, 40)}`,
+          tokenId: Math.random().toString(16).substr(2, 8),
+          ipfsHash: `Qm${Math.random().toString(16).substr(2, 40)}`,
+        };
+        
+        setMintingResult(mockResult);
+        setEventStatus('completed');
+      }
+    } catch (error) {
+      console.error('Error minting NFT:', error);
+      setEventStatus('expired'); // Reset to expired state on error
+    }
+  };
 
   // Reset the palette flag after painting (but keep color selected on desktop)
   useEffect(() => {
@@ -125,15 +227,103 @@ export function EventPageClient({ eventId }: EventPageClientProps) {
     </div>
   );
 
+  // Render different screens based on event status
+  const renderEventScreen = () => {
+    switch (eventStatus) {
+      case 'active':
+        return (
+          <div className="w-full h-screen bg-gray-200 overflow-hidden relative">
+            {/* Event Info Overlay */}
+            {eventMetadata && (
+              <div className="absolute top-4 left-4 z-20 bg-white/90 backdrop-blur-sm rounded-lg p-4 shadow-lg">
+                <h2 className="text-lg font-bold text-gray-800">{eventMetadata.name as string}</h2>
+                <p className="text-sm text-gray-600 mb-2">{eventMetadata.description as string}</p>
+                <div className="flex items-center space-x-2">
+                  <span className="text-sm font-medium text-gray-700">Time Remaining:</span>
+                  <span className="text-lg font-bold text-red-600">{formatTimeRemaining(timeRemaining)}</span>
+                </div>
+              </div>
+            )}
+            
+            {/* Full Screen Canvas - Pixel Place Style */}
+            <Canvas eventId={eventId} selectedColor={selectedColor} colorClickTrigger={colorClickTrigger} isFromColorPalette={isFromColorPalette} />
+          </div>
+        );
+        
+      case 'expired':
+        return (
+          <div className="w-full h-screen bg-gray-200 flex items-center justify-center">
+            <div className="bg-white rounded-lg shadow-lg p-8 max-w-md mx-4 text-center">
+              <h2 className="text-2xl font-bold text-gray-800 mb-4">Event Expired</h2>
+              <p className="text-gray-600 mb-6">
+                The collaborative art session has ended. Your canvas is ready to be minted as an NFT!
+              </p>
+              <button
+                onClick={handleMintNFT}
+                className="bg-blue-500 text-white px-6 py-3 rounded-lg hover:bg-blue-600 transition-colors font-medium"
+              >
+                Mint as NFT
+              </button>
+            </div>
+          </div>
+        );
+        
+      case 'minting':
+        return (
+          <div className="w-full h-screen bg-gray-200 flex items-center justify-center">
+            <div className="bg-white rounded-lg shadow-lg p-8 max-w-md mx-4 text-center">
+              <h2 className="text-2xl font-bold text-gray-800 mb-4">Minting NFT</h2>
+              <p className="text-gray-600 mb-6">
+                Uploading your canvas to IPFS and deploying NFT contract...
+              </p>
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mx-auto mb-4"></div>
+              <p className="text-sm text-gray-500">This may take a few minutes...</p>
+            </div>
+          </div>
+        );
+        
+      case 'completed':
+        return (
+          <div className="w-full h-screen bg-gray-200 flex items-center justify-center">
+            <div className="bg-white rounded-lg shadow-lg p-8 max-w-md mx-4 text-center">
+              <h2 className="text-2xl font-bold text-gray-800 mb-4">NFT Minted Successfully!</h2>
+              <p className="text-gray-600 mb-6">
+                Your collaborative art has been minted as an NFT on Base.
+              </p>
+              {mintingResult && (
+                <div className="bg-gray-50 rounded-lg p-4 mb-4">
+                  <p className="text-sm text-gray-600">Contract Address:</p>
+                  <p className="font-mono text-xs text-blue-600 break-all">{mintingResult.contractAddress as string}</p>
+                </div>
+              )}
+              <button
+                onClick={() => window.location.href = '/'}
+                className="bg-green-500 text-white px-6 py-3 rounded-lg hover:bg-green-600 transition-colors font-medium"
+              >
+                Create New Event
+              </button>
+            </div>
+          </div>
+        );
+        
+      default:
+        return (
+          <div className="w-full h-screen bg-gray-200 flex items-center justify-center">
+            <div className="text-center">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mx-auto mb-4"></div>
+              <p className="text-gray-600">Loading event...</p>
+            </div>
+          </div>
+        );
+    }
+  };
+
   return (
     <>
-      <div className="w-full h-screen bg-gray-200 overflow-hidden relative">
-        {/* Full Screen Canvas - Pixel Place Style */}
-        <Canvas eventId={eventId} selectedColor={selectedColor} colorClickTrigger={colorClickTrigger} isFromColorPalette={isFromColorPalette} />
-      </div>
+      {renderEventScreen()}
       
-      {/* Color Palette - Rendered as Portal to avoid zoom interference */}
-      {mounted && createPortal(paletteElement, document.body)}
+      {/* Color Palette - Only show for active events */}
+      {mounted && eventStatus === 'active' && createPortal(paletteElement, document.body)}
     </>
   );
 }
