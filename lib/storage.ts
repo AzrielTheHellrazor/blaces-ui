@@ -38,10 +38,12 @@ export class EventStorage {
   constructor(baseUrl?: string) {
     if (baseUrl) {
       this.baseUrl = baseUrl;
-    } else if (process.env.NEXT_PUBLIC_API_BASE_URL) {
-      this.baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL;
+    } else if (process.env.NEXT_PUBLIC_EVENTS_API_BASE_URL) {
+      // Use dedicated EVENTS API base if provided
+      this.baseUrl = process.env.NEXT_PUBLIC_EVENTS_API_BASE_URL;
     } else {
-      throw new Error('API base URL must be provided via constructor or NEXT_PUBLIC_API_BASE_URL environment variable');
+      // Default to same-origin for Next.js app routes
+      this.baseUrl = '';
     }
   }
 
@@ -146,7 +148,5 @@ export class EventStorage {
 }
 
 // Default storage instance
-export const eventStorage = new EventStorage(
-  process.env.NEXT_PUBLIC_API_BASE_URL || undefined
-);
+export const eventStorage = new EventStorage();
 

@@ -2,6 +2,7 @@
 // Handles CRUD operations for events with metadata
 
 import { NextRequest, NextResponse } from 'next/server';
+import { redis } from '@/lib/redis';
 
 // Mock database - in production, use a real database
 const events = new Map<string, Record<string, unknown>>();
@@ -43,6 +44,17 @@ export async function POST(request: NextRequest) {
 
     // Store in mock database
     events.set(eventId, eventMetadata);
+
+    // Persist (eventId => creator) mapping in Redis if available
+    try {
+      if (redis) {
+        const key = `blaces:event:creator:${eventId}`;
+        await redis.set(key, creator);
+      }
+    } catch (e) {
+      // Non-fatal: log and continue
+      console.warn('Failed to store event creator in Redis:', e);
+    }
 
     return NextResponse.json(eventMetadata);
   } catch (error) {

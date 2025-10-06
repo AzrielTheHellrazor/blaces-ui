@@ -89,7 +89,7 @@ export class PaymentService {
       console.log('Contract address:', IMAGE_GENERATOR_CONTRACT_ADDRESS);
       
       // Simulate transaction processing time
-      await new Promise(resolve => setTimeout(resolve, 3000));
+      await new Promise(resolve => setTimeout(resolve, 1000));
       
       // Mock transaction hash
       const mockTxHash = `0x${Math.random().toString(16).substr(2, 64)}`;

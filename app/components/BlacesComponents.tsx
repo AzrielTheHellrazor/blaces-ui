@@ -79,6 +79,7 @@ export function CreateEvent() {
   const [eventName, setEventName] = useState("");
   const [eventDescription, setEventDescription] = useState("");
   const [eventDuration, setEventDuration] = useState(60); // Default 1 hour
+  const [eventCost, setEventCost] = useState(1); // Default 1 USDC
   const [eventCode, setEventCode] = useState("");
   const [showQR, setShowQR] = useState(false);
   const [qrCodeDataUrl, setQrCodeDataUrl] = useState("");
@@ -234,6 +235,21 @@ export function CreateEvent() {
                 <option value={180}>3 hours</option>
                 <option value={240}>4 hours</option>
               </select>
+            </div>
+            
+            <div>
+              <label className="block text-sm font-medium text-foreground mb-2">
+                Event Cost (USDC)
+              </label>
+              <input
+                type="number"
+                value={eventCost}
+                onChange={(e) => setEventCost(Number(e.target.value))}
+                placeholder="Enter event cost..."
+                min="0.1"
+                step="0.1"
+                className="w-full px-3 py-2 bg-card-bg border border-card-border rounded-lg text-foreground placeholder-foreground-muted focus:outline-none focus:ring-1 focus:ring-accent text-base"
+              />
             </div>
             
             

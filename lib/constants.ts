@@ -4,7 +4,7 @@
 export const USDC_CONTRACT_ADDRESS = "0x036CbD53842c5426634e7929541eC2318f3dCF7e";
 
 // ImageGenerator Contract Address on Base Sepolia
-export const IMAGE_GENERATOR_CONTRACT_ADDRESS = "0x7557894171c7BCBdf2d2eeFbE4D37F05Be2284d2";
+export const IMAGE_GENERATOR_CONTRACT_ADDRESS = process.env.NEXT_PUBLIC_PAYMENT_CONTRACT || "0x8C93345a5e6D49B85D5259236E63084146a3fe1c";
 
 // Payment recipient address (your wallet address)
 export const PAYMENT_RECIPIENT_ADDRESS = process.env.NEXT_PUBLIC_PAYMENT_RECIPIENT_ADDRESS || "";

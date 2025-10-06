@@ -47,13 +47,14 @@ export class BlacesAPIClient {
   private baseUrl: string;
 
   constructor(baseUrl?: string) {
-    // Do not leak the backend URL in the client bundle; require explicit baseUrl or environment variable
+    // Use a dedicated env var for the Blace backend to avoid collisions with app API
+    const envBase = process.env.NEXT_PUBLIC_BLACES_API_BASE_URL || process.env.NEXT_PUBLIC_API_BASE_URL;
     if (baseUrl) {
       this.baseUrl = baseUrl;
-    } else if (process.env.NEXT_PUBLIC_API_BASE_URL) {
-      this.baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL;
+    } else if (envBase) {
+      this.baseUrl = envBase;
     } else {
-      throw new Error('API base URL must be provided via constructor or NEXT_PUBLIC_API_BASE_URL environment variable');
+      throw new Error('API base URL must be provided via constructor or NEXT_PUBLIC_BLACES_API_BASE_URL environment variable');
     }
   }
 
@@ -183,5 +184,5 @@ export class BlacesAPIClient {
 
 // Default client instance using direct backend connection
 export const blacesAPI = new BlacesAPIClient(
-  process.env.NEXT_PUBLIC_API_BASE_URL || undefined
+  process.env.NEXT_PUBLIC_BLACES_API_BASE_URL || process.env.NEXT_PUBLIC_API_BASE_URL || undefined
 );
